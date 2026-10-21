@@ -9,17 +9,25 @@ type Item = {
 
 type Catalog = { items: Item[] }
 
-async function firstCourseWithLessons(request: APIRequestContext): Promise<{ course: Item; lessons: Item[] }> {
+async function courseWithLessons(
+  request: APIRequestContext,
+  min: number,
+  max = Number.POSITIVE_INFINITY,
+): Promise<{ course: Item; lessons: Item[] }> {
   const catalog = (await (await request.get("/api/catalog")).json()) as Catalog
   const byId = new Map(catalog.items.map((item) => [item.id, item]))
-  const course = catalog.items.find((item) => item.kind === "course" && (item.lessonIds?.length ?? 0) >= 2)
-  if (!course) throw new Error("the catalogue has no course with lessons")
+  const course = catalog.items.find(
+    (item) => item.kind === "course" && (item.lessonIds?.length ?? 0) >= min && (item.lessonIds?.length ?? 0) <= max,
+  )
+  if (!course) throw new Error("the catalogue has no course with that many lessons")
   const lessons = (course.lessonIds ?? []).map((id) => byId.get(id)).filter((item): item is Item => Boolean(item))
   return { course, lessons }
 }
 
-async function openCourse(page: Page, request: APIRequestContext) {
-  const { course, lessons } = await firstCourseWithLessons(request)
+const firstCourseWithLessons = (request: APIRequestContext) => courseWithLessons(request, 2)
+
+async function openCourse(page: Page, request: APIRequestContext, min = 2, max = Number.POSITIVE_INFINITY) {
+  const { course, lessons } = await courseWithLessons(request, min, max)
   await page.goto("/")
   await expect(page.locator("article").first()).toBeVisible()
   await page.getByPlaceholder(/Search/).fill(course.title)
@@ -67,24 +75,18 @@ test.describe("course panel", () => {
     await expect(card).not.toHaveAttribute("data-open", "1")
   })
 
-  test("opens beside the card, sliding the rest right and wrapping only the ones that no longer fit", async ({
-    page,
-  }) => {
+  test("opens beside the card and takes the room its lessons need", async ({ page, request }) => {
     await page.setViewportSize({ width: 1440, height: 900 })
-    await page.goto("/")
+    const { card: opened, lessons } = await openCourse(page, request, 8)
     const cards = page.locator("article")
-    await expect(cards.first()).toBeVisible()
-
-    const before = await cards.nth(0).boundingBox()
-    const beforeNeighbour = await cards.nth(1).boundingBox()
+    const before = await opened.boundingBox()
     expect(before).not.toBeNull()
-    expect(beforeNeighbour).not.toBeNull()
 
-    await cards.nth(0).locator("h3 button").click()
+    await opened.locator("h3 button").click()
     const panel = panelOf(page)
     await expect(panel).toBeVisible()
 
-    const card = await cards.nth(0).boundingBox()
+    const card = await opened.boundingBox()
     expect(card).not.toBeNull()
 
     const edgeOffset = async () => {
@@ -94,23 +96,48 @@ test.describe("course panel", () => {
     }
     await expect.poll(edgeOffset).toBeLessThanOrEqual(1)
 
-    const rowOf = async (index: number) => Math.round((await cards.nth(index).boundingBox())?.y ?? 0)
-    const closedRow = Math.round(before?.y ?? 0)
-    await expect.poll(() => rowOf(1)).toBe(closedRow)
-    await expect
-      .poll(async () => Math.round((await cards.nth(1).boundingBox())?.x ?? 0))
-      .toBeGreaterThan(Math.round((beforeNeighbour?.x ?? 0) + 10))
-
     const panelVsCard = async () => {
       const box = await panel.boundingBox()
       if (!box || !card) return 999
       return Math.abs(Math.round(box.height) - Math.round(card.height))
     }
     await expect.poll(panelVsCard).toBeLessThanOrEqual(1)
+
+    const gridRight = async () =>
+      Math.round(await page.locator("article").first().evaluate((el) => el.parentElement?.getBoundingClientRect().right ?? 0))
+    const slackAtRight = async () => {
+      const box = await panel.boundingBox()
+      if (!box) return 999
+      return Math.round((await gridRight()) - (box.x + box.width))
+    }
+    expect(lessons.length).toBeGreaterThanOrEqual(8)
+    await expect.poll(slackAtRight).toBeLessThanOrEqual(1)
+
+    const rowOf = async (index: number) => Math.round((await cards.nth(index).boundingBox())?.y ?? 0)
+    await expect.poll(() => rowOf(1)).toBe(Math.round((card?.y ?? 0) + (card?.height ?? 0) + 10))
     await expect.poll(() => rowOf(2)).toBe(Math.round((card?.y ?? 0) + (card?.height ?? 0) + 10))
 
     await page.getByRole("button", { name: "Close lessons" }).click()
     await expect(panel).toHaveCount(0)
+    await expect.poll(() => rowOf(1)).toBe(Math.round(before?.y ?? 0))
+  })
+
+  test("a course with few lessons keeps the panel narrow instead of filling the row", async ({ page, request }) => {
+    await page.setViewportSize({ width: 1440, height: 900 })
+    const { card: opened } = await openCourse(page, request, 2, 2)
+    await opened.locator("h3 button").click()
+    const panel = panelOf(page)
+    await expect(panel).toBeVisible()
+
+    const gridRight = async () =>
+      Math.round(await page.locator("article").first().evaluate((el) => el.parentElement?.getBoundingClientRect().right ?? 0))
+    const slackAtRight = async () => {
+      const box = await panel.boundingBox()
+      if (!box) return 0
+      return Math.round((await gridRight()) - (box.x + box.width))
+    }
+    await expect.poll(slackAtRight).toBeGreaterThan(100)
+    await expect(panel.locator("ol > li")).toHaveCount(2)
   })
 
   test("marks the card and the lesson rows that are on disk", async ({ page, request }) => {

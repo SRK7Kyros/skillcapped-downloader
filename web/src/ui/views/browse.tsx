@@ -3,13 +3,14 @@ import { AnimatePresence } from "motion/react"
 import type { CatalogItem, CatalogResponse, LibraryResponse, Meta } from "../../api/types"
 import { useStartDownloads } from "../../api/hooks"
 import { courseLessons } from "../../lib/course"
+import { panelGeometry, panelTracks } from "../../lib/panel"
 import { rankItems } from "../../lib/search"
 import { ItemCard, isDownloadable, type DownloadedState } from "../components/item-card"
 import { BrowseToolbar, type KindFilter, type SortMode } from "../components/browse-toolbar"
 import { CoursePanel } from "../components/course-panel"
 import { PreviewPlayer } from "../components/player"
 import { SelectionBar } from "../components/selection-bar"
-import { useGridColumns } from "../grid"
+import { useGridMetrics } from "../grid"
 import { Button, EmptyState, Spinner } from "../primitives"
 import { useEscape, useSelection } from "../store"
 
@@ -53,7 +54,8 @@ export function BrowseView({
   const lastIndexRef = useRef<number | null>(null)
   const lessonIndexRef = useRef<number | null>(null)
   const gridRef = useRef<HTMLDivElement>(null)
-  const columns = useGridColumns(gridRef)
+  const { columns, track, gap } = useGridMetrics(gridRef)
+  const [openCardHeight, setOpenCardHeight] = useState(0)
 
   const downloadedByUuid = useMemo(() => {
     const map = new Map<string, string>()
@@ -205,8 +207,10 @@ export function BrowseView({
   const openColumn = openIndex >= 0 ? (openIndex % columns) + 1 : 0
   const openRow = openIndex >= 0 ? Math.floor(openIndex / columns) + 1 : 0
   const room = openColumn > 0 ? columns - openColumn : 0
-  const halfTheGrid = Math.max(2, Math.round(columns / 2))
-  const panelSpan = Math.min(room, halfTheGrid)
+  // The panel is as wide as its cards ask for, never wider than the room left in
+  // the row — a long course takes the rest of the row and scrolls inside it.
+  const openGeometry = panelGeometry(openCardHeight, openLessons.length)
+  const panelSpan = panelTracks(openGeometry.contentWidth, track, gap, PANEL_MIN_TRACKS, room)
   const beside = panelSpan >= PANEL_MIN_TRACKS
   const placement: CSSProperties | null =
     openIndex < 0
@@ -214,8 +218,6 @@ export function BrowseView({
       : beside
         ? { gridColumn: `${openColumn + 1} / span ${panelSpan}`, gridRow: `${openRow}` }
         : { gridColumn: "1 / -1", gridRow: `${openRow + 1}` }
-
-  const [openCardHeight, setOpenCardHeight] = useState(0)
 
   useLayoutEffect(() => {
     const card = gridRef.current?.querySelector<HTMLElement>('article[data-open="1"]')

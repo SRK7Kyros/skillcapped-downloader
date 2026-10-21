@@ -111,17 +111,18 @@ course reads solid green with a `Complete` tag, so what you already have is
 visible in the grid without filtering for it. Clicking the card opens its lessons
 **beside itself**: the lesson panel grows out of the card's right edge and the
 rest of the grid slides along to make room (motion.dev springs, switched off
-entirely under `prefers-reduced-motion`). The panel claims at most half the
-grid's tracks, never the whole run to its right, so the cards that still fit
-stay in the row and slide right while only the ones that no longer fit wrap to
-the next one; where fewer than three columns remain — a phone, or a card in the
-last column — it takes the full row below instead. Beside the card it is also
-**exactly as tall as the card it belongs to**, so opening one never stretches
-the grid's row: the course's own metadata is the strip's **first card** (its
-poster, date, title, on-disk progress, select/clear chips and the download
-button), and the lessons follow it as an **n×2 strip** — two rows as tall as half
-the card, scrolling sideways for the rest — so a chapter reads as a strip of
-videos rather than a wall of rows. Every lesson card takes the width its 16:9
+entirely under `prefers-reduced-motion`). The panel is **exactly as wide as its
+cards ask for** — the course card plus one column per two lessons — and never
+wider than the room left in its row, so a two-lesson course opens a narrow panel
+while a long one takes the rest of the row and scrolls inside it (the cards that
+followed wrap to the next row). Where fewer than three columns remain — a phone,
+or a card near the end of a row — it takes the full row below instead. Beside the
+card it is also **exactly as tall as the card it belongs to**, so opening one
+never stretches the grid's row: the course's own metadata is the strip's **first
+card** (its poster, date, title, on-disk progress, select/clear chips and the
+download button), and the lessons follow it as an **n×2 strip** — two rows as tall
+as half the card, scrolling sideways for the rest — so a chapter reads as a strip
+of videos rather than a wall of rows. Every lesson card takes the width its 16:9
 poster needs at that height, so a thumbnail is **never cropped horizontally**;
 it carries the poster, duration in the corner, on-disk tag, selection box and a
 preview button in its title row (so the button cannot swallow the select click).

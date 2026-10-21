@@ -5,13 +5,8 @@ import { courseDiskState, missingLessons } from "../../lib/course"
 import { formatDate, roleLabel } from "../../lib/format"
 import { Icon } from "../icons"
 import { Button, Chip, IconButton, ProgressBar, cx } from "../primitives"
+import { panelGeometry, STACKED_STRIP_HEIGHT } from "../../lib/panel"
 import { LessonCard } from "./lesson-card"
-
-const STRIP_ROWS = 2
-const STRIP_GAP = 8
-const CARD_BORDER = 2
-const TITLE_BLOCK = 44
-const STACKED_STRIP_HEIGHT = 296
 
 export function CoursePanel({
   course,
@@ -56,11 +51,10 @@ export function CoursePanel({
 
   const stacked = !attached
   // A lesson card is sized from the strip height so its poster is never cropped horizontally.
-  const stripHeight = stacked ? STACKED_STRIP_HEIGHT : height
-  const rowHeight = stripHeight ? (stripHeight - STRIP_GAP * (STRIP_ROWS - 1)) / STRIP_ROWS : 0
-  const posterHeight = Math.max(56, rowHeight - TITLE_BLOCK)
-  const lessonWidth = stripHeight ? Math.ceil((posterHeight * 16) / 9) + CARD_BORDER : 168
-  const infoWidth = Math.min(220, Math.max(188, Math.round(lessonWidth * 0.6)))
+  const { stripHeight, lessonWidth, infoWidth } = panelGeometry(
+    stacked ? STACKED_STRIP_HEIGHT : height,
+    lessons.length,
+  )
 
   useEffect(() => {
     panel.current?.focus({ preventScroll: true })
