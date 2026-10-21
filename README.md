@@ -106,10 +106,14 @@ visible in the grid without filtering for it. Clicking the card opens its lesson
 rest of the grid slides along to make room (motion.dev springs, switched off
 entirely under `prefers-reduced-motion`); where fewer than two columns remain —
 a phone, or a card in the last column — it takes the full row below instead.
-Each lesson carries its own on-disk tag, selection box and preview, and the
-panel's footer queues whatever is selected, or else exactly the lessons still
-missing. The card's own checkbox, a shift-click (the range) or a ctrl/⌘-click
-(that one card, no range) still adds it to the bulk selection.
+Each lesson is a card of its own — poster, duration in the corner, on-disk tag,
+selection box and a preview button — laid out two to four across as the panel
+widens, so a chapter reads as a strip of videos rather than a wall of rows. A
+plain click anywhere on a card selects it (the preview button sits in the title
+row, not over the middle, so it cannot swallow that click), and the panel's
+footer queues whatever is selected, or else exactly the lessons still missing.
+The card's own checkbox, a shift-click (the range) or a ctrl/⌘-click (that one
+card, no range) still adds it to the bulk selection.
 
 ## Limits worth knowing
 

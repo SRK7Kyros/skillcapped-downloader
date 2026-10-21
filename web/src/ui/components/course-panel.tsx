@@ -2,9 +2,10 @@ import { useEffect, useRef, type CSSProperties } from "react"
 import { motion, useReducedMotion } from "motion/react"
 import type { CatalogItem } from "../../api/types"
 import { courseDiskState, missingLessons } from "../../lib/course"
-import { formatDate, formatDuration, roleLabel } from "../../lib/format"
+import { formatDate, roleLabel } from "../../lib/format"
 import { Icon } from "../icons"
 import { Button, Chip, IconButton, ProgressBar, cx } from "../primitives"
+import { LessonCard } from "./lesson-card"
 
 export function CoursePanel({
   course,
@@ -106,56 +107,18 @@ export function CoursePanel({
         </div>
       </header>
 
-      <ol className="grid max-h-[min(52vh,420px)] grid-cols-1 gap-x-3 overflow-y-auto px-2 py-1.5 @[430px]:grid-cols-2 @[900px]:grid-cols-3">
-        {lessons.map((lesson, index) => {
-          const quality = downloaded.get(lesson.id)
-          const active = isSelected(lesson.id)
-          return (
-            <li
-              key={lesson.id}
-              className={cx(
-                "flex items-center gap-1 border-b border-line/40 px-1 transition-colors duration-[var(--dur-fast)] hover:bg-surface-2",
-                active && "bg-brand-dim/25",
-              )}
-            >
-              <button
-                type="button"
-                onClick={(event) => onToggleLesson(lesson.id, event.shiftKey && !(event.ctrlKey || event.metaKey))}
-                aria-pressed={active}
-                aria-label={`${active ? "Deselect" : "Select"} ${lesson.title}`}
-                className="flex min-w-0 flex-1 items-center gap-2.5 rounded-[var(--r-xs)] px-1 py-1.5 text-left tab-stop"
-              >
-                <span
-                  className={cx(
-                    "grid h-4 w-4 shrink-0 place-items-center rounded-[3px] border",
-                    active ? "border-brand bg-brand text-brand-ink" : "border-line-strong text-transparent",
-                  )}
-                >
-                  <Icon name="check" size={10} strokeWidth={3} />
-                </span>
-                <span className="w-4 shrink-0 font-mono text-[10px] text-ink-faint tabular-nums">
-                  {String(index + 1).padStart(2, "0")}
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="line-clamp-2 block text-[11.5px] leading-snug font-medium text-ink">
-                    {lesson.title}
-                  </span>
-                  <span className="block text-[10px] text-ink-faint tabular-nums">
-                    {formatDuration(lesson.durationSec)}
-                    {lesson.staff ? ` · ${lesson.staff}` : ""}
-                  </span>
-                </span>
-              </button>
-              {quality ? (
-                <span className="inline-flex shrink-0 items-center gap-1 rounded-[var(--r-xs)] bg-success-dim px-1.5 py-0.5 text-[9.5px] font-semibold tracking-[0.04em] text-success uppercase">
-                  <Icon name="check" size={9} strokeWidth={3} />
-                  {quality}
-                </span>
-              ) : null}
-              <IconButton icon="play" label={`Preview ${lesson.title}`} onClick={() => onPreview(lesson)} />
-            </li>
-          )
-        })}
+      <ol className="grid max-h-[min(56vh,520px)] grid-cols-2 gap-2 overflow-y-auto p-2 @[430px]:grid-cols-3 @[760px]:grid-cols-4">
+        {lessons.map((lesson, index) => (
+          <LessonCard
+            key={lesson.id}
+            lesson={lesson}
+            index={index}
+            selected={isSelected(lesson.id)}
+            quality={downloaded.get(lesson.id)}
+            onToggle={onToggleLesson}
+            onPreview={onPreview}
+          />
+        ))}
       </ol>
 
       <footer className="mt-auto flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-line px-4 py-2.5">

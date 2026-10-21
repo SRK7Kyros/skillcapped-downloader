@@ -123,6 +123,39 @@ test.describe("course panel", () => {
     await expect(complete).toContainText(/complete/i)
   })
 
+  test("shows every lesson as a card with its poster, duration and preview", async ({ page, request }) => {
+    const { lessons, card } = await openCourse(page, request)
+    await card.locator("h3 button").click()
+
+    const rows = panelOf(page).locator("ol > li")
+    await expect(rows).toHaveCount(lessons.length)
+    const first = rows.first()
+    await expect(first.locator("[data-poster]")).toHaveAttribute("data-poster", /^(image|fallback)$/)
+    await expect(first).toContainText(/\d+:\d{2}/)
+    await expect(first.getByRole("button", { name: /^Preview / })).toHaveCount(1)
+    await expect(first.locator("button[aria-pressed]")).toHaveCount(1)
+  })
+
+  test("clicking a lesson card selects it instead of previewing it", async ({ page, request }) => {
+    const { card } = await openCourse(page, request)
+    await card.locator("h3 button").click()
+
+    const panel = panelOf(page)
+    const first = panel.locator("ol > li").first()
+    await expect(first).toBeVisible()
+
+    // A plain click in the middle of the card is the selection gesture; the
+    // preview button used to sit dead centre and swallow it.
+    await first.click()
+    await expect(first).toHaveAttribute("data-selected", "1")
+    await expect(panel).toContainText("1 selected")
+    await expect(page.getByRole("dialog")).toHaveCount(0)
+
+    await first.click()
+    await expect(first).not.toHaveAttribute("data-selected", "1")
+    await expect(panel).toContainText("0 selected")
+  })
+
   test("selects the whole course from the panel", async ({ page, request }) => {
     const { lessons, card } = await openCourse(page, request)
     await card.locator("h3 button").click()
