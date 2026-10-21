@@ -153,6 +153,36 @@ still adds it to the bulk selection.
   the course name attached to each lesson, so folders and titles agree.
 - The download queue is in memory plus `jobs.json`; there is no scheduler.
 
+## iOS app
+
+`ios/` is a read-only phone companion: point it at the folder the downloader
+writes to (Files → pick folder) and it becomes a browsable library with real
+cover art and native playback. Nothing is downloaded, copied or uploaded — the
+app scans the folder in place and plays the files it finds.
+
+- **What it reads.** `<title> [<uuid>] <quality>.mp4` under
+  `Courses/<role>/<course>/`, `Videos/<role>/<category>/` and
+  `Commentaries/<role>/`, exactly as `src/core/naming.ts` writes them, joined to
+  `.skillcapped/catalog.json` for titles, durations and the order a course lists
+  its lessons in. Without that file the folders still group a course, and a video
+  copied in by hand keeps its own name. MPEG-TS files (what a cancelled remux
+  leaves behind) are skipped, because AVPlayer cannot play them.
+- **Cover art.** A frame pulled out of each lesson (`AVAssetImageGenerator`), a
+  little way in, cached under `Caches/posters`. A file that cannot yield a frame
+  falls back to a gradient seeded from its title, so a card never looks broken.
+- **Playback.** `AVPlayerViewController`, so picture in picture, AirPlay and
+  subtitle tracks come for free; the position of every file is remembered and
+  resumed above five seconds.
+- **Folder access.** The picker hands back a security-scoped URL, remembered as a
+  bookmark, so the library survives relaunches. `Change folder` and
+  `Forget folder` live in the settings sheet, which also reports what was scanned
+  and how large it is.
+- **Build.** XcodeGen generates the project from `ios/project.yml`
+  (`brew install xcodegen && cd ios && xcodegen generate`). iPhone and iPad,
+  iOS 17+. `.github/workflows/ios.yml` runs the unit and UI suites on a
+  simulator and publishes an unsigned IPA artifact; install it with a sideloader
+  (Feather, AltStore), which re-signs it.
+
 ## Development
 
 ```bash
