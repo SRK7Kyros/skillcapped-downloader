@@ -84,6 +84,22 @@ test.describe("browse", () => {
     await expect(page.getByText(/\d+ selected/)).toHaveCount(0)
   })
 
+  test("a course card shows its banner, title and release date", async ({ page }) => {
+    await page.goto("/")
+    await expect(page.locator("article").first()).toBeVisible()
+
+    await page.getByRole("tab", { name: "Courses" }).click()
+    const card = page.locator("article").first()
+    await expect(card.locator("h3")).not.toBeEmpty()
+    await expect(card.locator("img")).toHaveAttribute("src", /skill-capped/)
+
+    const footer = card.locator("div").last()
+    await expect(footer).toContainText(/\d{4}/)
+    await expect(footer).toContainText(/\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)/)
+    await expect(footer).not.toContainText(/tags/i)
+    await expect(card.getByText(/^\d+ lessons$/)).toHaveCount(1)
+  })
+
   test("fits the viewport at 375 and 768 without overflow", async ({ page }) => {
     for (const width of [375, 768]) {
       await page.setViewportSize({ width, height: 800 })

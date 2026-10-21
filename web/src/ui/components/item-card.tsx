@@ -106,9 +106,7 @@ export function ItemCard({
           <Badge color={color} subtle>
             {roleShort(item.role)}
           </Badge>
-          {item.kind === "course" ? (
-            downloadable ? <Badge>{item.videoCount} lessons</Badge> : <Badge>No lessons yet</Badge>
-          ) : null}
+          {item.kind === "course" && !downloadable ? <Badge>No lessons yet</Badge> : null}
         </div>
 
         <button
@@ -179,7 +177,7 @@ export function ItemCard({
           {item.kind === "commentary" && item.champions ? ` · ${item.champions}` : ""}
         </p>
         <div className="mt-auto flex items-center justify-between gap-2 pt-1 text-[9.5px] text-ink-faint">
-          <span className="truncate">{item.kind === "course" ? `${item.tags.length} tags` : formatDate(item.date)}</span>
+          <span className="truncate">{formatDate(item.date)}</span>
           {item.kind === "commentary" && item.kda ? (
             <span className="font-mono tabular-nums text-ink-dim">{item.kda}</span>
           ) : item.kind === "video" && item.courseTitle ? (
