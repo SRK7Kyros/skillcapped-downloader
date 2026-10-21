@@ -1,0 +1,15 @@
+node_modules/
+dist/
+build/
+content/
+.e2e-content/
+test-results/
+playwright-report/
+*.local
+.env
+.env.*
+.DS_Store
+
+# Bundle a real ffmpeg here to ship one with the executable (see README).
+bin/*
+!bin/.gitkeep

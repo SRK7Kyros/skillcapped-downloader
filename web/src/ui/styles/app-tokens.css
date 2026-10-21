@@ -1,0 +1,15 @@
+/*
+ * App-specific token extension. tokens.css stays pristine as the shared design
+ * system; the only thing this app adds is a role palette, because skill
+ * category is the primary axis of the browse experience and needs its own
+ * hues that do not collide with the status hues.
+ */
+
+:root {
+  --role-all: #9b9ba6;
+  --role-top: #58a6ff;
+  --role-jungle: #3fb950;
+  --role-mid: #a371f7;
+  --role-adc: #e3b341;
+  --role-support: #39c5cf;
+}

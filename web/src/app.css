@@ -1,0 +1,11 @@
+@import "./ui/styles/tailwind.css";
+@import "./ui/styles/fonts.css";
+@import "./ui/styles/tokens.css";
+@import "./ui/styles/app-tokens.css";
+/* Layered on purpose: base.css carries element resets that Tailwind utilities
+   must be able to beat. Unlayered CSS outranks layered CSS, so an unlayered
+   base would silently defeat every utility at the call site. */
+@import "./ui/styles/base.css" layer(base);
+/* Unlayered: the bespoke component classes (checkbox, native select chevron,
+   player chrome) that are shaped like CSS rather than like utilities. */
+@import "./ui/styles/components.css";
