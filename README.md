@@ -82,6 +82,11 @@ in a Firestore document, so the catalogue is discovered — not hardcoded:
 The UI's preview player consumes a playlist the server synthesises from the same
 segment scheme, which makes it a live check that the download path is correct.
 
+Every queued lesson reports two bars: its own part-by-part progress and, when a
+whole course was queued, the course's progress in the same row
+(`course · 7/12 lessons`). Lessons are grouped by the catalogue's course id, so a
+bulk run reads as one course rather than a dozen unrelated downloads.
+
 Jobs persist across restarts (`content/.skillcapped/jobs.json`); a job that was
 mid-flight when the app closed is marked `interrupted` and can be retried. The
 `skip downloaded` option is on by default and consults the on-disk library.

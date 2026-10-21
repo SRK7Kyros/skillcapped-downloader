@@ -151,7 +151,7 @@ export function ProgressBar({
   className,
 }: {
   value: number
-  tone?: "brand" | "danger" | "success" | "warning"
+  tone?: "brand" | "danger" | "success" | "warning" | "muted"
   height?: number
   className?: string
 }) {
@@ -161,6 +161,7 @@ export function ProgressBar({
     danger: "bg-danger",
     success: "bg-success",
     warning: "bg-warning",
+    muted: "bg-ink-faint",
   }
   return (
     <div

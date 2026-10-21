@@ -1,5 +1,7 @@
+import { useMemo } from "react"
 import type { JobRecord, JobStatus, Quality, ToolInfo } from "../../api/types"
 import { formatBytes, formatEta, formatSpeed, roleVar } from "../../lib/format"
+import { courseProgressByGroup, itemPercent, type CourseProgress } from "../../lib/progress"
 import { Icon, type IconName } from "../icons"
 import { Badge, Button, IconButton, ProgressBar, Tooltip, cx } from "../primitives"
 
@@ -19,12 +21,6 @@ const ATTENTION: JobStatus[] = ["failed", "interrupted", "cancelled"]
 
 export const isActive = (status: JobStatus) => ACTIVE.includes(status)
 
-function progressPercent(job: JobRecord): number {
-  if (job.status === "done") return 100
-  if (job.segmentsTotal > 0) return (job.segmentsDone / job.segmentsTotal) * 100
-  return 0
-}
-
 function estimateEta(job: JobRecord): number {
   if (!isActive(job.status) || job.status === "queued") return 0
   if (!job.startedAt || job.segmentsDone <= 0 || job.segmentsTotal <= 0) return 0
@@ -35,17 +31,19 @@ function estimateEta(job: JobRecord): number {
 
 function JobRow({
   job,
+  course,
   onCancel,
   onRetry,
   onRemove,
 }: {
   job: JobRecord
+  course: CourseProgress | null
   onCancel: (id: string) => void
   onRetry: (id: string) => void
   onRemove: (id: string) => void
 }) {
   const meta = STATUS_META[job.status]
-  const percent = progressPercent(job)
+  const percent = itemPercent(job)
   const eta = estimateEta(job)
   const active = isActive(job.status)
   const tone = meta.tone
@@ -112,6 +110,7 @@ function JobRow({
         <div className="mt-2 space-y-1">
           <ProgressBar value={percent} tone={tone === "neutral" ? "brand" : tone} />
           <div className="flex flex-wrap items-center gap-x-3 text-[10px] text-ink-dim tabular-nums">
+            <span className="font-medium text-ink">{Math.round(percent)}%</span>
             <span>
               part {Math.min(job.segmentsDone, job.segmentsTotal || job.segmentsDone)}/{job.segmentsTotal || "?"}
             </span>
@@ -132,6 +131,16 @@ function JobRow({
             {job.relativePath}
           </span>
           {job.sizeBytes ? <span className="tabular-nums">{formatBytes(job.sizeBytes)}</span> : null}
+        </div>
+      ) : null}
+
+      {course ? (
+        <div className="mt-2 space-y-0.5">
+          <ProgressBar value={course.percent} tone="muted" height={3} />
+          <div className="flex items-center justify-between gap-2 text-[9.5px] text-ink-faint tabular-nums">
+            <span className="truncate">course · {course.done}/{course.total} lessons</span>
+            <span>{Math.round(course.percent)}%</span>
+          </div>
         </div>
       ) : null}
 
@@ -169,6 +178,7 @@ export function DownloadsPanel({
   const finished = jobs.filter((job) => job.status === "done")
   const bytes = jobs.reduce((total, job) => total + (job.sizeBytes ?? 0), 0)
   const qualityLabel = qualities.find((option) => option.id === defaults.quality)?.label ?? "—"
+  const courses = useMemo(() => courseProgressByGroup(jobs), [jobs])
 
   if (!jobs.length) {
     return (
@@ -210,7 +220,14 @@ export function DownloadsPanel({
         <section className="space-y-2">
           <h3 className="text-[10px] font-semibold tracking-[0.08em] text-ink-dim uppercase">In progress</h3>
           {running.map((job) => (
-            <JobRow key={job.id} job={job} onCancel={onCancel} onRetry={onRetry} onRemove={onRemove} />
+            <JobRow
+              key={job.id}
+              job={job}
+              course={job.groupId ? (courses.get(job.groupId) ?? null) : null}
+              onCancel={onCancel}
+              onRetry={onRetry}
+              onRemove={onRemove}
+            />
           ))}
         </section>
       ) : null}
@@ -219,7 +236,14 @@ export function DownloadsPanel({
         <section className="space-y-2">
           <h3 className="text-[10px] font-semibold tracking-[0.08em] text-ink-dim uppercase">Needs attention</h3>
           {attention.map((job) => (
-            <JobRow key={job.id} job={job} onCancel={onCancel} onRetry={onRetry} onRemove={onRemove} />
+            <JobRow
+              key={job.id}
+              job={job}
+              course={job.groupId ? (courses.get(job.groupId) ?? null) : null}
+              onCancel={onCancel}
+              onRetry={onRetry}
+              onRemove={onRemove}
+            />
           ))}
         </section>
       ) : null}
@@ -228,7 +252,14 @@ export function DownloadsPanel({
         <section className="space-y-2">
           <h3 className="text-[10px] font-semibold tracking-[0.08em] text-ink-dim uppercase">Finished</h3>
           {finished.map((job) => (
-            <JobRow key={job.id} job={job} onCancel={onCancel} onRetry={onRetry} onRemove={onRemove} />
+            <JobRow
+              key={job.id}
+              job={job}
+              course={job.groupId ? (courses.get(job.groupId) ?? null) : null}
+              onCancel={onCancel}
+              onRetry={onRetry}
+              onRemove={onRemove}
+            />
           ))}
         </section>
       ) : null}
