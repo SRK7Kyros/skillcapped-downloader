@@ -21,6 +21,7 @@ export function CoursePanel({
   onClose,
   busy,
   placement,
+  height,
   attached,
 }: {
   course: CatalogItem
@@ -36,6 +37,8 @@ export function CoursePanel({
   onClose: () => void
   busy: boolean
   placement: CSSProperties
+  /** The open card's height, so the panel never stretches its grid row. */
+  height: number
   attached: boolean
 }) {
   const state = courseDiskState(lessons, downloaded)
@@ -60,86 +63,87 @@ export function CoursePanel({
       animate={{ opacity: 1, x: 0 }}
       exit={{ opacity: 0, x: reduce ? 0 : -28 }}
       transition={reduce ? { duration: 0 } : { type: "spring", stiffness: 380, damping: 36, mass: 0.85 }}
-      style={placement}
+      style={{ ...placement, height: height || undefined }}
       className={cx(
-        "flex min-w-0 flex-col self-start overflow-hidden rounded-[var(--r-md)] border border-brand-line bg-surface-1 outline-none shadow-[0_0_0_1px_var(--accent-line)] @container",
+        "flex min-w-0 self-start overflow-hidden rounded-[var(--r-md)] border border-brand-line bg-surface-1 outline-none shadow-[0_0_0_1px_var(--accent-line)] @container",
         attached && "-ml-2.5 rounded-l-none",
       )}
     >
-      <header className="flex flex-wrap items-start gap-x-3 gap-y-2 border-b border-line px-4 py-3">
-        <div className="min-w-0 flex-1 basis-full @[520px]:basis-0">
-          <p className="text-[10px] font-semibold tracking-[0.06em] text-ink-faint uppercase">
-            {roleLabel(course.role)} · {formatDate(course.date)}
-          </p>
-          <h2 className="mt-0.5 line-clamp-2 text-[13px] font-semibold text-ink @[520px]:line-clamp-1">
-            {course.title}
-          </h2>
-        </div>
-        <div className="flex shrink-0 items-center gap-1.5">
-          <Chip onClick={onSelectAll} className="text-ink-muted">
-            <Icon name="plus" size={10} />
-            Select all
-          </Chip>
-          <Chip onClick={onClear} className="text-ink-dim">
-            <Icon name="minus" size={10} />
-            Clear
-          </Chip>
+      <aside className="flex w-[136px] shrink-0 flex-col gap-2 overflow-hidden border-r border-line p-2.5 @[440px]:w-[168px] @[640px]:w-[196px]">
+        <div className="flex items-start gap-1">
+          <div className="min-w-0 flex-1">
+            <p className="text-[9.5px] font-semibold tracking-[0.06em] text-ink-faint uppercase">
+              {roleLabel(course.role)} · {formatDate(course.date)}
+            </p>
+            <h2 className="mt-1 line-clamp-3 text-[12px] font-semibold leading-snug text-ink">{course.title}</h2>
+          </div>
           <IconButton icon="x" label="Close lessons" onClick={onClose} />
         </div>
-        <div className="basis-full">
+
+        <div>
           <ProgressBar
             value={state.total ? (state.have / state.total) * 100 : 0}
             tone={state.complete ? "success" : "brand"}
           />
-          <div className="mt-1 flex items-center justify-between gap-2 text-[10px] tabular-nums">
-            <span className="text-ink-muted">
-              {state.have} of {state.total} on disk
-            </span>
-            {state.complete ? (
-              <span className="inline-flex items-center gap-1 font-semibold tracking-[0.04em] text-success uppercase">
-                <Icon name="check" size={10} strokeWidth={3} />
-                Complete
-              </span>
-            ) : (
-              <span className="text-ink-faint">{missing.length} to go</span>
-            )}
-          </div>
+          <p className="mt-1 text-[10px] text-ink-muted tabular-nums">
+            {state.have} of {state.total} on disk
+          </p>
+          {state.complete ? (
+            <p className="mt-0.5 inline-flex items-center gap-1 text-[9.5px] font-semibold tracking-[0.04em] text-success uppercase">
+              <Icon name="check" size={9} strokeWidth={3} />
+              Complete
+            </p>
+          ) : (
+            <p className="mt-0.5 text-[10px] text-ink-faint tabular-nums">{missing.length} to go</p>
+          )}
         </div>
-      </header>
 
-      <ol className="grid max-h-[min(56vh,520px)] grid-cols-2 gap-2 overflow-y-auto p-2 @[430px]:grid-cols-3 @[760px]:grid-cols-4">
-        {lessons.map((lesson, index) => (
-          <LessonCard
-            key={lesson.id}
-            lesson={lesson}
-            index={index}
-            selected={isSelected(lesson.id)}
-            quality={downloaded.get(lesson.id)}
-            onToggle={onToggleLesson}
-            onPreview={onPreview}
-          />
-        ))}
-      </ol>
+        <div className="mt-auto flex flex-col gap-1.5">
+          <p className="text-[9.5px] leading-snug text-ink-faint">Shift-click a range, Ctrl-click one.</p>
+          <div className="flex flex-wrap gap-1">
+            <Chip onClick={onSelectAll} className="text-ink-muted">
+              <Icon name="plus" size={10} />
+              Select all
+            </Chip>
+            <Chip onClick={onClear} className="text-ink-dim">
+              <Icon name="minus" size={10} />
+              Clear
+            </Chip>
+          </div>
+          <span className="text-[10px] text-ink-faint tabular-nums">{selectedCount} selected</span>
+          <Button
+            variant="primary"
+            size="sm"
+            className="w-full"
+            icon="download"
+            loading={busy}
+            disabled={!queue.length}
+            onClick={() => onDownload(queue)}
+          >
+            {selected.length
+              ? `Download ${selected.length} selected`
+              : missing.length
+                ? `Download ${missing.length} missing`
+                : "Every lesson is on disk"}
+          </Button>
+        </div>
+      </aside>
 
-      <footer className="mt-auto flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-line px-4 py-2.5">
-        <span className="text-[10.5px] text-ink-faint tabular-nums">{selectedCount} selected</span>
-        <span className="hidden text-[10px] text-ink-faint @[560px]:inline">Shift-click a range, Ctrl-click one</span>
-        <Button
-          variant="primary"
-          size="sm"
-          className="ml-auto"
-          icon="download"
-          loading={busy}
-          disabled={!queue.length}
-          onClick={() => onDownload(queue)}
-        >
-          {selected.length
-            ? `Download ${selected.length} selected`
-            : missing.length
-              ? `Download ${missing.length} missing`
-              : "Every lesson is on disk"}
-        </Button>
-      </footer>
+      <div className="min-w-0 flex-1 overflow-x-auto overflow-y-hidden p-2 [mask-image:linear-gradient(to_right,black_calc(100%_-_26px),transparent)]">
+        <ol className="grid h-full grid-flow-col grid-rows-2 auto-cols-[minmax(148px,1fr)] gap-2 @[560px]:auto-cols-[minmax(168px,1fr)]">
+          {lessons.map((lesson, index) => (
+            <LessonCard
+              key={lesson.id}
+              lesson={lesson}
+              index={index}
+              selected={isSelected(lesson.id)}
+              quality={downloaded.get(lesson.id)}
+              onToggle={onToggleLesson}
+              onPreview={onPreview}
+            />
+          ))}
+        </ol>
+      </div>
     </motion.section>
   )
 }

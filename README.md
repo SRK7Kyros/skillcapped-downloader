@@ -108,15 +108,18 @@ entirely under `prefers-reduced-motion`). The panel claims at most half the
 grid's tracks, never the whole run to its right, so the cards that still fit
 stay in the row and slide right while only the ones that no longer fit wrap to
 the next one; where fewer than two columns remain — a phone, or a card in the
-last column — it takes the full row below instead.
-Each lesson is a card of its own — poster, duration in the corner, on-disk tag,
-selection box and a preview button — laid out two to four across as the panel
-widens, so a chapter reads as a strip of videos rather than a wall of rows. A
-plain click anywhere on a card selects it (the preview button sits in the title
-row, not over the middle, so it cannot swallow that click), and the panel's
-footer queues whatever is selected, or else exactly the lessons still missing.
-The card's own checkbox, a shift-click (the range) or a ctrl/⌘-click (that one
-card, no range) still adds it to the bulk selection.
+last column — it takes the full row below instead. It is also **exactly as tall
+as the course card it belongs to**, so opening one never stretches the grid's
+row: the title, on-disk progress and the download button sit in a rail on the
+left, and the lessons are an **n×2 strip** — two rows as tall as half the card,
+scrolling sideways for the rest — so a chapter reads as a strip of videos rather
+than a wall of rows. Each lesson is a card of its own: poster (cropped to fill
+its half), duration in the corner, on-disk tag, selection box and a preview
+button. A plain click anywhere on a card selects it (the preview button sits in
+the title row, not over the middle, so it cannot swallow that click), and the
+panel's button queues whatever is selected, or else exactly the lessons still
+missing. The card's own checkbox, a shift-click (the range) or a ctrl/⌘-click
+(that one card, no range) still adds it to the bulk selection.
 
 ## Limits worth knowing
 

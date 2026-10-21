@@ -50,7 +50,7 @@ export function LessonCard({
         onToggle(lesson.id, event.shiftKey && !(event.ctrlKey || event.metaKey))
       }}
       className={cx(
-        "group relative flex cursor-pointer flex-col overflow-hidden rounded-[var(--r-md)] border bg-surface-1 transition-[border-color,background-color] duration-[var(--dur-fast)]",
+        "group relative flex min-h-0 cursor-pointer flex-col overflow-hidden rounded-[var(--r-md)] border bg-surface-1 transition-[border-color,background-color] duration-[var(--dur-fast)]",
         selected
           ? "border-brand-line bg-surface-2 shadow-[0_0_0_1px_var(--accent-line)]"
           : quality
@@ -59,7 +59,7 @@ export function LessonCard({
       )}
     >
       <div
-        className="relative aspect-[16/9] w-full overflow-hidden bg-surface-2"
+        className="relative min-h-0 w-full flex-1 overflow-hidden bg-surface-2"
         data-poster={showPoster ? "image" : "fallback"}
       >
         {showPoster ? (

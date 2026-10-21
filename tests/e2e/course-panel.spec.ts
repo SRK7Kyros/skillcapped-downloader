@@ -100,7 +100,14 @@ test.describe("course panel", () => {
     await expect
       .poll(async () => Math.round((await cards.nth(1).boundingBox())?.x ?? 0))
       .toBeGreaterThan(Math.round((beforeNeighbour?.x ?? 0) + 10))
-    await expect.poll(() => rowOf(2)).toBeGreaterThan(Math.round(closedRow + (card?.height ?? 0) / 2))
+
+    const panelVsCard = async () => {
+      const box = await panel.boundingBox()
+      if (!box || !card) return 999
+      return Math.abs(Math.round(box.height) - Math.round(card.height))
+    }
+    await expect.poll(panelVsCard).toBeLessThanOrEqual(1)
+    await expect.poll(() => rowOf(2)).toBe(Math.round((card?.y ?? 0) + (card?.height ?? 0) + 10))
 
     await page.getByRole("button", { name: "Close lessons" }).click()
     await expect(panel).toHaveCount(0)

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react"
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react"
 import { AnimatePresence } from "motion/react"
 import type { CatalogItem, CatalogResponse, LibraryResponse, Meta } from "../../api/types"
 import { useStartDownloads } from "../../api/hooks"
@@ -213,6 +213,21 @@ export function BrowseView({
         ? { gridColumn: `${openColumn + 1} / span ${panelSpan}`, gridRow: `${openRow}` }
         : { gridColumn: "1 / -1", gridRow: `${openRow + 1}` }
 
+  const [openCardHeight, setOpenCardHeight] = useState(0)
+
+  useLayoutEffect(() => {
+    const card = gridRef.current?.querySelector<HTMLElement>('article[data-open="1"]')
+    if (!card) {
+      setOpenCardHeight(0)
+      return
+    }
+    const read = () => setOpenCardHeight(card.offsetHeight)
+    read()
+    const observer = new ResizeObserver(read)
+    observer.observe(card)
+    return () => observer.disconnect()
+  }, [openCourseId, columns, visible.length])
+
   useEscape(() => setOpenCourseId(null), Boolean(openCourseId) && !preview)
 
   useEffect(() => {
@@ -308,6 +323,7 @@ export function BrowseView({
                   onClose={() => setOpenCourseId(null)}
                   busy={startDownloads.isPending}
                   placement={placement}
+                  height={openCardHeight}
                   attached={beside}
                 />
               ) : null}
