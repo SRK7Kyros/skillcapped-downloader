@@ -55,14 +55,14 @@ jobs:
         working-directory: ios
         run: |
           set +e
-          xcodebuild test -quiet \
+          xcodebuild test \
             -project SkillCappedLocal.xcodeproj \
             -scheme SkillCappedLocal \
             -destination "platform=iOS Simulator,name=${{ steps.sim.outputs.device }}" \
             -resultBundlePath "$RUNNER_TEMP/tests.xcresult" \
             > "$RUNNER_TEMP/tests.log" 2>&1
           STATUS=$?
-          grep -E "error:|warning:|Test Suite|Test Case|\*\* TEST" "$RUNNER_TEMP/tests.log" | tail -200
+          grep -E "Test Case .*(passed|failed)|Executed [0-9]+ test|error:|\*\* TEST" "$RUNNER_TEMP/tests.log" | tail -80
           if [ $STATUS -ne 0 ]; then
             echo "--- last 120 lines ---"
             tail -120 "$RUNNER_TEMP/tests.log"
