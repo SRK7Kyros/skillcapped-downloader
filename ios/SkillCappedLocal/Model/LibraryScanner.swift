@@ -84,7 +84,8 @@ enum LibraryScanner {
       }
     }
 
-    let courses = courseLessons.map { key, lessons -> Course in
+    var courses: [Course] = []
+    for (key, lessons) in courseLessons {
       let meta = courseMeta[key]
       let fallback = courseFolderMeta[key]
       let ordered = lessons.sorted { first, second in
@@ -93,22 +94,25 @@ enum LibraryScanner {
         if firstIndex != secondIndex { return firstIndex < secondIndex }
         return first.title.localizedStandardCompare(second.title) == .orderedAscending
       }
-      return Course(
+      courses.append(Course(
         id: key,
         title: meta?.title ?? fallback?.title ?? "Untitled course",
         role: meta?.role ?? fallback?.role ?? "",
         category: meta?.category ?? "",
         date: meta?.date ?? fallback?.date,
         lessons: ordered
-      )
+      ))
     }
-    .sorted { first, second in
+    courses.sort { first, second in
       let firstDate = first.date ?? .distantPast
       let secondDate = second.date ?? .distantPast
       if firstDate != secondDate { return firstDate > secondDate }
       return first.title.localizedStandardCompare(second.title) == .orderedAscending
     }
 
+    let sortedCommentaries = commentaries.sorted {
+      $0.title.localizedStandardCompare($1.title) == .orderedAscending
+    }
     let sortedVideos = videos.sorted { first, second in
       let firstDate = first.modified ?? .distantPast
       let secondDate = second.modified ?? .distantPast
@@ -116,17 +120,17 @@ enum LibraryScanner {
       return first.title.localizedStandardCompare(second.title) == .orderedAscending
     }
 
-    let totalBytes = courses.reduce(Int64(0)) { $0 + $1.bytes }
-      + sortedVideos.reduce(Int64(0)) { $0 + $1.bytes }
-      + commentaries.reduce(Int64(0)) { $0 + $1.bytes }
+    let courseBytes = courses.reduce(Int64(0)) { $0 + $1.bytes }
+    let videoBytes = sortedVideos.reduce(Int64(0)) { $0 + $1.bytes }
+    let commentaryBytes = sortedCommentaries.reduce(Int64(0)) { $0 + $1.bytes }
 
     return LibraryScan(
       rootName: root.lastPathComponent,
       rootPath: root.path,
       courses: courses,
       videos: sortedVideos,
-      commentaries: commentaries.sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending },
-      totalBytes: totalBytes,
+      commentaries: sortedCommentaries,
+      totalBytes: courseBytes + videoBytes + commentaryBytes,
       catalogDate: catalog.generatedAt,
       scannedAt: Date()
     )
