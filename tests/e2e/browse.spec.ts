@@ -157,9 +157,9 @@ test.describe("browse", () => {
         return [...rows.values()].filter((heights) => heights.size > 1).length
       })()`) as Promise<number>
 
-    expect(await unevenRows()).toBe(0)
+    await expect.poll(unevenRows, { timeout: 10_000 }).toBe(0)
     await showVideos(page)
-    expect(await unevenRows()).toBe(0)
+    await expect.poll(unevenRows, { timeout: 10_000 }).toBe(0)
   })
 
   test("fits the viewport at 375 and 768 without overflow", async ({ page }) => {

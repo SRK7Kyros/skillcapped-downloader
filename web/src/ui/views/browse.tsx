@@ -1,15 +1,17 @@
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react"
+import { AnimatePresence } from "motion/react"
 import type { CatalogItem, CatalogResponse, LibraryResponse, Meta } from "../../api/types"
 import { useStartDownloads } from "../../api/hooks"
 import { courseLessons } from "../../lib/course"
 import { rankItems } from "../../lib/search"
 import { ItemCard, isDownloadable, type DownloadedState } from "../components/item-card"
 import { BrowseToolbar, type KindFilter, type SortMode } from "../components/browse-toolbar"
-import { CourseDrawer } from "../components/course-drawer"
+import { CoursePanel } from "../components/course-panel"
 import { PreviewPlayer } from "../components/player"
 import { SelectionBar } from "../components/selection-bar"
+import { useGridColumns } from "../grid"
 import { Button, EmptyState, Spinner } from "../primitives"
-import { useSelection } from "../store"
+import { useEscape, useSelection } from "../store"
 
 const PAGE_SIZE = 60
 const QUALITY_RANK: Record<string, number> = { "720p": 1, "1080p": 2, "4K": 3 }
@@ -48,6 +50,8 @@ export function BrowseView({
   const [limit, setLimit] = useState(PAGE_SIZE)
   const lastIndexRef = useRef<number | null>(null)
   const lessonIndexRef = useRef<number | null>(null)
+  const gridRef = useRef<HTMLDivElement>(null)
+  const columns = useGridColumns(gridRef)
 
   const downloadedByUuid = useMemo(() => {
     const map = new Map<string, string>()
@@ -195,6 +199,23 @@ export function BrowseView({
 
   const selectedIds = useMemo(() => Array.from(selection), [selection])
 
+  const openIndex = openCourse ? visible.findIndex((item) => item.id === openCourse.id) : -1
+  const openColumn = openIndex >= 0 ? (openIndex % columns) + 1 : 0
+  const openRow = openIndex >= 0 ? Math.floor(openIndex / columns) + 1 : 0
+  const beside = openColumn > 0 && columns - openColumn >= 2
+  const placement: CSSProperties | null =
+    openIndex < 0
+      ? null
+      : beside
+        ? { gridColumn: `${openColumn + 1} / -1`, gridRow: `${openRow}` }
+        : { gridColumn: "1 / -1", gridRow: `${openRow + 1}` }
+
+  useEscape(() => setOpenCourseId(null), Boolean(openCourseId) && !preview)
+
+  useEffect(() => {
+    if (openCourseId && !visible.some((item) => item.id === openCourseId)) setOpenCourseId(null)
+  }, [openCourseId, visible])
+
   return (
     <div>
       <BrowseToolbar
@@ -246,19 +267,48 @@ export function BrowseView({
         />
       ) : (
         <>
-          <div className="grid grid-cols-2 items-start gap-2.5 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
+          <div
+            ref={gridRef}
+            className="grid grid-cols-2 items-start gap-2.5 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6"
+          >
             {visible.map((item) => (
               <ItemCard
                 key={item.id}
                 item={item}
                 selected={isSelected(item.id)}
                 open={item.id === openCourseId}
+                attached={item.id === openCourseId && beside}
                 downloaded={downloadedLabel(item)}
                 onToggle={handleToggle}
                 onPreview={setPreview}
                 onOpen={handleOpenCourse}
               />
             ))}
+
+            <AnimatePresence initial={false}>
+              {openCourse && placement ? (
+                <CoursePanel
+                  key={openCourse.id}
+                  course={openCourse}
+                  lessons={openLessons}
+                  downloaded={downloadedByUuid}
+                  selectedCount={openLessons.filter((lesson) => isSelected(lesson.id)).length}
+                  isSelected={isSelected}
+                  onToggleLesson={handleToggleLesson}
+                  onSelectAll={() => selectMany(openLessons.filter(isDownloadable).map((lesson) => lesson.id))}
+                  onClear={() => selectMany(openLessons.map((lesson) => lesson.id), "remove")}
+                  onPreview={setPreview}
+                  onDownload={(ids) => {
+                    setOpenCourseId(null)
+                    queueSelection(ids)
+                  }}
+                  onClose={() => setOpenCourseId(null)}
+                  busy={startDownloads.isPending}
+                  placement={placement}
+                  attached={beside}
+                />
+              ) : null}
+            </AnimatePresence>
           </div>
 
           <div ref={sentinelRef} className="flex items-center justify-center py-6">
@@ -287,24 +337,6 @@ export function BrowseView({
         onDownload={() => queueSelection(selectedIds)}
         onSelectAll={() => selectMany(filtered.filter(isDownloadable).map((item) => item.id))}
         onClear={clearSelection}
-        busy={startDownloads.isPending}
-      />
-
-      <CourseDrawer
-        course={openCourse}
-        lessons={openLessons}
-        downloaded={downloadedByUuid}
-        selectedCount={openLessons.filter((lesson) => isSelected(lesson.id)).length}
-        isSelected={isSelected}
-        onToggleLesson={handleToggleLesson}
-        onSelectAll={() => selectMany(openLessons.filter(isDownloadable).map((lesson) => lesson.id))}
-        onClear={() => selectMany(openLessons.map((lesson) => lesson.id), "remove")}
-        onPreview={setPreview}
-        onDownload={(ids) => {
-          setOpenCourseId(null)
-          queueSelection(ids)
-        }}
-        onClose={() => setOpenCourseId(null)}
         busy={startDownloads.isPending}
       />
 

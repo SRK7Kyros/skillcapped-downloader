@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react"
+import { motion, useReducedMotion } from "motion/react"
 import type { CatalogItem } from "../../api/types"
 import { formatCount, formatDate, formatDuration, roleLabel, roleShort, roleVar } from "../../lib/format"
 import { imageRatio, posterRatio } from "../../lib/media"
@@ -59,6 +60,7 @@ export function ItemCard({
   item,
   selected,
   open,
+  attached,
   downloaded,
   onToggle,
   onPreview,
@@ -67,6 +69,7 @@ export function ItemCard({
   item: CatalogItem
   selected: boolean
   open: boolean
+  attached?: boolean
   downloaded: DownloadedState | null
   onToggle: (id: string, additive: boolean) => void
   onPreview: (item: CatalogItem) => void
@@ -74,6 +77,7 @@ export function ItemCard({
 }) {
   const [brokenThumb, setBrokenThumb] = useState(false)
   const [ratio, setRatio] = useState<string | null>(null)
+  const reduce = useReducedMotion()
   const color = roleVar(item.role)
   const showPoster = Boolean(item.thumb) && !brokenThumb
   const playable = item.kind !== "course"
@@ -81,21 +85,25 @@ export function ItemCard({
   const expandable = item.kind === "course" && downloadable
 
   return (
-    <article
+    <motion.article
+      layout={!reduce}
+      transition={reduce ? { duration: 0 } : { type: "spring", stiffness: 420, damping: 40, mass: 0.7 }}
       data-selected={selected ? "1" : undefined}
       data-open={open ? "1" : undefined}
       data-on-disk={downloaded?.complete ? "1" : downloaded ? "partial" : undefined}
       onClick={(event) => {
         if (isInteractive(event.target)) return
-        if (expandable && !event.shiftKey) {
+        const single = event.ctrlKey || event.metaKey
+        if (expandable && !event.shiftKey && !single) {
           onOpen(item)
           return
         }
         if (!downloadable) return
-        onToggle(item.id, event.shiftKey)
+        onToggle(item.id, event.shiftKey && !single)
       }}
       className={cx(
-        "group relative flex flex-col overflow-hidden rounded-[var(--r-md)] border bg-surface-1 transition-[border-color,background-color,transform] duration-[var(--dur-fast)]",
+        "group relative flex flex-col overflow-hidden rounded-[var(--r-md)] border bg-surface-1 transition-[border-color,background-color] duration-[var(--dur-fast)]",
+        attached && "rounded-r-none",
         downloadable ? "cursor-pointer" : "cursor-default",
         selected || open
           ? "border-brand-line bg-surface-2 shadow-[0_0_0_1px_var(--accent-line)]"
@@ -148,7 +156,7 @@ export function ItemCard({
           title={downloadable ? undefined : "This course has no lessons published yet."}
           onClick={(event) => {
             event.stopPropagation()
-            onToggle(item.id, event.shiftKey)
+            onToggle(item.id, event.shiftKey && !(event.ctrlKey || event.metaKey))
           }}
           className={cx(
             "absolute top-1.5 right-1.5 grid h-[22px] w-[22px] place-items-center rounded-[var(--r-xs)] border transition-colors duration-[var(--dur-fast)] tab-stop",
@@ -199,9 +207,11 @@ export function ItemCard({
           {expandable ? (
             <button
               type="button"
+              aria-expanded={open}
               onClick={(event) => {
                 event.stopPropagation()
-                if (event.shiftKey) onToggle(item.id, true)
+                if (event.shiftKey) onToggle(item.id, !(event.ctrlKey || event.metaKey))
+                else if (event.ctrlKey || event.metaKey) onToggle(item.id, false)
                 else onOpen(item)
               }}
               className="text-left tab-stop"
@@ -237,6 +247,6 @@ export function ItemCard({
           ) : null}
         </div>
       </div>
-    </article>
+    </motion.article>
   )
 }

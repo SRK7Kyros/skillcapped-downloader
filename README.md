@@ -101,11 +101,15 @@ The catalogue opens on **courses**, and there is no catch-all tab — the conten
 switch is Courses / Videos / Smurfs. A course card is a collapsed entry: its
 border turns green as soon as any of its lessons is on disk, and a fully archived
 course reads solid green with a `Complete` tag, so what you already have is
-visible in the grid without filtering for it. Clicking the card opens a drawer on
-its right listing every lesson with its own on-disk tag, selection box and
-preview; the drawer's footer queues whatever is selected, or else exactly the
-lessons still missing. The card's own checkbox (or a shift-click) still adds the
-course to the bulk selection.
+visible in the grid without filtering for it. Clicking the card opens its lessons
+**beside itself**: the lesson panel grows out of the card's right edge and the
+rest of the grid slides along to make room (motion.dev springs, switched off
+entirely under `prefers-reduced-motion`); where fewer than two columns remain —
+a phone, or a card in the last column — it takes the full row below instead.
+Each lesson carries its own on-disk tag, selection box and preview, and the
+panel's footer queues whatever is selected, or else exactly the lessons still
+missing. The card's own checkbox, a shift-click (the range) or a ctrl/⌘-click
+(that one card, no range) still adds it to the bulk selection.
 
 ## Limits worth knowing
 
