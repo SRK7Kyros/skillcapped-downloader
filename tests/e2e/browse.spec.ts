@@ -89,7 +89,10 @@ test.describe("browse", () => {
       await page.setViewportSize({ width, height: 800 })
       await page.goto("/")
       await expect(page.locator("article").first()).toBeVisible()
-      const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)
+      // A string expression, so the server tsconfig can stay DOM-free.
+      const overflow = (await page.evaluate(
+        "document.documentElement.scrollWidth - window.innerWidth",
+      )) as number
       expect(overflow, `horizontal overflow at ${width}px`).toBeLessThanOrEqual(2)
     }
   })
