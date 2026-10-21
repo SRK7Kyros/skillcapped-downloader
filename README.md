@@ -1,0 +1,126 @@
+# SkillCapped Downloader
+
+A local web app for browsing the [SkillCapped](https://www.skill-capped.com/lol/browse/all)
+League of Legends library — courses, lessons and smurf commentaries — with bulk
+selection and downloading. It compiles to a single executable: run it, and it
+starts a server on `127.0.0.1` and opens your browser.
+
+Everything downloaded lands in a `content/` folder **next to the executable**.
+
+> **Personal use only.** This tool reads SkillCapped's public content API and its
+> video CDN directly. It is not affiliated with SkillCapped, it does not bypass a
+> paywall on any content that is not already served publicly, and it is intended
+> for personal archival of material you already have access to. Respect their
+> terms of service and your local law.
+
+## Running it
+
+1. Download the build for your platform (`dist/skillcapped-downloader-*.exe` / `-linux-*` / `-darwin-*`).
+2. Run it. Your browser opens at `http://127.0.0.1:4780`.
+3. Search or filter the catalogue, pick items, and press **Download**.
+
+Files appear under `content/` beside the executable, so the folder travels with it:
+
+```
+content/
+  Videos/<role>/<category>/<title> [<uuid>] <quality>.mp4
+  Courses/<role>/<course>/<title> [<uuid>] <quality>.mp4
+  Commentaries/<role>/<title> [<uuid>] <quality>.mp4
+```
+
+### ffmpeg
+
+Segments are MPEG-TS. With **ffmpeg** available the download is remuxed to MP4
+(`-c copy`, no re-encode) and verified before it is published. Without ffmpeg the
+transport stream is kept as `.ts` under an honest name, so a missing ffmpeg costs
+you a step, never a download.
+
+ffmpeg is found in this order: `SKILLCAPPED_FFMPEG` → a `bin/` folder next to the
+executable → your `PATH`. To ship one alongside the app, drop the binary in
+`bin/` (that path is gitignored).
+
+## Command line
+
+| Flag | Default | Meaning |
+| --- | --- | --- |
+| `--port`, `-p` | `4780` | Port to serve on |
+| `--host` | `127.0.0.1` | Bind address (loopback only, deliberately) |
+| `--content-dir` | `<exe dir>/content` | Where downloads are written |
+| `--quality`, `-q` | `2500` | Default rendition: `1500` (720p), `2500` (1080p), `4500` (2160p) |
+| `--concurrency` | `3` | Simultaneous downloads (4K is serialised) |
+| `--no-remux` | — | Keep raw `.ts` files |
+| `--no-open` | — | Do not launch a browser |
+| `--help`, `-h` | — | Usage |
+
+Every flag has an environment equivalent (`PORT`, `HOST`, `SKILLCAPPED_CONTENT_DIR`,
+`SKILLCAPPED_QUALITY`, `SKILLCAPPED_CONCURRENCY`, `SKILLCAPPED_REMUX`,
+`SKILLCAPPED_NO_OPEN`). Flags win over the environment.
+
+Running a second copy simply opens the first one's page: the port is claimed
+first, and the newcomer recognises the API and hands off.
+
+## How it works
+
+SkillCapped publishes its catalogue as one static JSON dump whose URL is recorded
+in a Firestore document, so the catalogue is discovered — not hardcoded:
+
+1. `content-location/lol-content-location` (Firestore, no token needed) → the
+   versioned dump URL.
+2. The dump (`videos`, `commentaries`, `courses`, `tagInfo`, `videosToCourses`)
+   is parsed tolerantly into one flat catalogue of ~6,450 items.
+3. Each video is served as discrete MPEG-TS segments on CloudFront
+   (`<uuid>/HIDDEN<quality>-<index>.ts`) with **no published playlist**, so the
+   segment count is found by bracketing from the expected length and binary
+   searching for the last one that answers `200`.
+4. Segments are fetched in parallel, concatenated in order (each part is deleted
+   as it is consumed, so peak disk use is one copy plus one segment), remuxed to
+   MP4 and atomically renamed into place.
+5. A failed remux keeps the `.ts` rather than a mislabelled file, and any error
+   clears the job's scratch folder — a failure never leaves partial output in
+   `content/`.
+
+The UI's preview player consumes a playlist the server synthesises from the same
+segment scheme, which makes it a live check that the download path is correct.
+
+Jobs persist across restarts (`content/.skillcapped/jobs.json`); a job that was
+mid-flight when the app closed is marked `interrupted` and can be retried. The
+`skip downloaded` option is on by default and consults the on-disk library.
+Downloaded files are recognised by parsing their own names, so the library stays
+correct even if you move files around inside `content/`.
+
+## Limits worth knowing
+
+- **No posters for most of the library.** Roughly two thirds of the videos and all
+  commentaries predate SkillCapped's poster migration, so the card's no-image
+  state is the common case by design and shows the role plus the kind.
+- **Four courses have no published lessons.** Their cards say so and cannot be
+  selected.
+- Course titles contain role placeholders (`Wave Control {support}`); they are
+  rendered as `Wave Control (Support)`, and the same substitution is applied to
+  the course name attached to each lesson, so folders and titles agree.
+- The download queue is in memory plus `jobs.json`; there is no scheduler.
+
+## Development
+
+```bash
+bun install
+bun run dev:web          # Vite dev server on :5179, proxying /api to :4780
+bun run start --no-open  # the server on :4780
+```
+
+| Script | What it does |
+| --- | --- |
+| `bun run dev:web` | Vite dev server with HMR for the UI |
+| `bun run build:web` | Build the UI to one self-contained HTML and embed it in the server |
+| `bun run build:exe` | Compile the executable (pass targets, or `--all`) |
+| `bun run build` | `build:web` then `build:exe` |
+| `bun test` | Unit suite (naming, CDN maths, segment probing, catalogue, flags, search) |
+| `bun run test:e2e` | Playwright browse suite (renders the real app) |
+| `bun run test:live` | Opt-in end-to-end run that really downloads (`LIVE=1`) |
+| `bun run typecheck` | TypeScript for both the server and the UI |
+
+The UI is React 19 + Vite + Tailwind v4 + Radix, and the design language is shared
+with [mirrorr](https://github.com/SRK7Kyros/mirrorr): the same token file drives
+it, and `content/.skillcapped/` holds the cache, scratch space and job list. The
+whole UI compiles into one HTML document that is embedded in the binary, so the
+executable has no sidecar assets at all.
