@@ -97,6 +97,16 @@ mid-flight when the app closed is marked `interrupted` and can be retried. The
 Downloaded files are recognised by parsing their own names, so the library stays
 correct even if you move files around inside `content/`.
 
+The catalogue opens on **courses**, and there is no catch-all tab — the content
+switch is Courses / Videos / Smurfs. A course card is a collapsed entry: its
+border turns green as soon as any of its lessons is on disk, and a fully archived
+course reads solid green with a `Complete` tag, so what you already have is
+visible in the grid without filtering for it. Clicking the card opens a drawer on
+its right listing every lesson with its own on-disk tag, selection box and
+preview; the drawer's footer queues whatever is selected, or else exactly the
+lessons still missing. The card's own checkbox (or a shift-click) still adds the
+course to the bulk selection.
+
 ## Limits worth knowing
 
 - **No posters for most of the library.** Roughly two thirds of the videos and all
@@ -129,7 +139,7 @@ bun run start --no-open  # the server on :4780
 | `bun run build:web` | Build the UI to one self-contained HTML and embed it in the server |
 | `bun run build:exe` | Compile the executable (pass targets, or `--all`) |
 | `bun run build` | `build:web` then `build:exe` |
-| `bun test` | Unit suite (naming, CDN maths, segment probing, catalogue, flags, search) |
+| `bun test` | Unit suite (naming, CDN maths, segment probing, catalogue, flags, search, course lessons) |
 | `bun run test:e2e` | Playwright browse suite (renders the real app) |
 | `bun run test:live` | Opt-in end-to-end run that really downloads (`LIVE=1`) |
 | `bun run typecheck` | TypeScript for both the server and the UI |

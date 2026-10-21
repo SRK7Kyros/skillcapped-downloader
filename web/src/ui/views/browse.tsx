@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import type { CatalogItem, CatalogResponse, LibraryResponse, Meta } from "../../api/types"
 import { useStartDownloads } from "../../api/hooks"
+import { courseLessons } from "../../lib/course"
 import { rankItems } from "../../lib/search"
-import { ItemCard, isDownloadable } from "../components/item-card"
+import { ItemCard, isDownloadable, type DownloadedState } from "../components/item-card"
 import { BrowseToolbar, type KindFilter, type SortMode } from "../components/browse-toolbar"
+import { CourseDrawer } from "../components/course-drawer"
 import { PreviewPlayer } from "../components/player"
 import { SelectionBar } from "../components/selection-bar"
 import { Button, EmptyState, Spinner } from "../primitives"
@@ -37,13 +39,15 @@ export function BrowseView({
 
   const [query, setQuery] = useState("")
   const [role, setRole] = useState("all")
-  const [kind, setKind] = useState<KindFilter>("all")
+  const [kind, setKind] = useState<KindFilter>("course")
   const [sort, setSort] = useState<SortMode>("newest")
   const [categories, setCategories] = useState<string[]>([])
   const [downloadState, setDownloadState] = useState<"any" | "missing" | "have">("any")
   const [preview, setPreview] = useState<CatalogItem | null>(null)
+  const [openCourseId, setOpenCourseId] = useState<string | null>(null)
   const [limit, setLimit] = useState(PAGE_SIZE)
   const lastIndexRef = useRef<number | null>(null)
+  const lessonIndexRef = useRef<number | null>(null)
 
   const downloadedByUuid = useMemo(() => {
     const map = new Map<string, string>()
@@ -57,20 +61,24 @@ export function BrowseView({
   }, [library.entries])
 
   const downloadedLabel = useMemo(() => {
-    const cache = new Map<string, string | null>()
-    return (item: CatalogItem): string | null => {
+    const cache = new Map<string, DownloadedState | null>()
+    return (item: CatalogItem): DownloadedState | null => {
       const cached = cache.get(item.id)
       if (cached !== undefined) return cached
-      let label: string | null = null
+      let state: DownloadedState | null = null
       if (item.kind === "course") {
         const lessons = item.lessonIds ?? []
         const have = lessons.filter((id) => downloadedByUuid.has(id)).length
-        label = have === 0 ? null : have === lessons.length ? "Complete" : `${have}/${lessons.length}`
+        state =
+          have === 0
+            ? null
+            : { label: have === lessons.length ? "Complete" : `${have}/${lessons.length}`, complete: have === lessons.length }
       } else {
-        label = downloadedByUuid.get(item.id) ?? null
+        const quality = downloadedByUuid.get(item.id)
+        state = quality ? { label: quality, complete: true } : null
       }
-      cache.set(item.id, label)
-      return label
+      cache.set(item.id, state)
+      return state
     }
   }, [downloadedByUuid])
 
@@ -80,7 +88,7 @@ export function BrowseView({
 
     const scoped = catalog.items.filter((item) => {
       if (!inRole && item.role !== role) return false
-      if (kind !== "all" && item.kind !== kind) return false
+      if (item.kind !== kind) return false
       if (categorySet && !categorySet.has(item.category) && !(item.tags ?? []).some((tag) => categorySet.has(tag))) {
         return false
       }
@@ -151,6 +159,35 @@ export function BrowseView({
     lastIndexRef.current = index >= 0 ? index : null
   }
 
+  const openCourse = useMemo(
+    () => catalog.items.find((item) => item.id === openCourseId) ?? null,
+    [catalog.items, openCourseId],
+  )
+  const openLessons = useMemo(
+    () => (openCourse ? courseLessons(catalog.items, openCourse) : []),
+    [catalog.items, openCourse],
+  )
+
+  const handleOpenCourse = (item: CatalogItem) => {
+    setOpenCourseId(item.id)
+    lessonIndexRef.current = null
+    const index = filtered.findIndex((entry) => entry.id === item.id)
+    lastIndexRef.current = index >= 0 ? index : null
+  }
+
+  const handleToggleLesson = (id: string, additive: boolean) => {
+    const index = openLessons.findIndex((lesson) => lesson.id === id)
+    if (additive && lessonIndexRef.current !== null && index >= 0) {
+      const from = Math.min(lessonIndexRef.current, index)
+      const to = Math.max(lessonIndexRef.current, index)
+      const range = openLessons.slice(from, to + 1).filter(isDownloadable).map((lesson) => lesson.id)
+      selectMany(range, isSelected(id) ? "remove" : "add")
+    } else {
+      toggle(id)
+    }
+    lessonIndexRef.current = index >= 0 ? index : null
+  }
+
   const queueSelection = (ids: string[]) => {
     if (!ids.length) return
     startDownloads.mutate({ ids, quality: prefs.quality, remux: prefs.remux, skipExisting: prefs.skipExisting })
@@ -198,7 +235,7 @@ export function BrowseView({
               onClick={() => {
                 setQuery("")
                 setRole("all")
-                setKind("all")
+                setKind("course")
                 setCategories([])
                 setDownloadState("any")
               }}
@@ -215,9 +252,11 @@ export function BrowseView({
                 key={item.id}
                 item={item}
                 selected={isSelected(item.id)}
+                open={item.id === openCourseId}
                 downloaded={downloadedLabel(item)}
                 onToggle={handleToggle}
                 onPreview={setPreview}
+                onOpen={handleOpenCourse}
               />
             ))}
           </div>
@@ -248,6 +287,24 @@ export function BrowseView({
         onDownload={() => queueSelection(selectedIds)}
         onSelectAll={() => selectMany(filtered.filter(isDownloadable).map((item) => item.id))}
         onClear={clearSelection}
+        busy={startDownloads.isPending}
+      />
+
+      <CourseDrawer
+        course={openCourse}
+        lessons={openLessons}
+        downloaded={downloadedByUuid}
+        selectedCount={openLessons.filter((lesson) => isSelected(lesson.id)).length}
+        isSelected={isSelected}
+        onToggleLesson={handleToggleLesson}
+        onSelectAll={() => selectMany(openLessons.filter(isDownloadable).map((lesson) => lesson.id))}
+        onClear={() => selectMany(openLessons.map((lesson) => lesson.id), "remove")}
+        onPreview={setPreview}
+        onDownload={(ids) => {
+          setOpenCourseId(null)
+          queueSelection(ids)
+        }}
+        onClose={() => setOpenCourseId(null)}
         busy={startDownloads.isPending}
       />
 

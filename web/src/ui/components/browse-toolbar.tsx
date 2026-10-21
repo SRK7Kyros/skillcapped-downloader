@@ -3,7 +3,7 @@ import { Icon } from "../icons"
 import { Button, Chip, IconButton, Popover, Segmented, cx } from "../primitives"
 import { roleLabel, roleShort, roleVar } from "../../lib/format"
 
-export type KindFilter = "all" | "video" | "commentary" | "course"
+export type KindFilter = "video" | "commentary" | "course"
 export type SortMode = "newest" | "oldest" | "longest" | "title"
 
 export const SORT_OPTIONS: Array<{ value: SortMode; label: string }> = [
@@ -177,7 +177,7 @@ export function BrowseToolbar({
   onDownloadStateChange: (value: "any" | "missing" | "have") => void
   downloadedCount: number
 }) {
-  const filtersActive = Boolean(query.trim()) || role !== "all" || kind !== "all" || selectedCategories.length > 0
+  const filtersActive = Boolean(query.trim()) || role !== "all" || kind !== "course" || selectedCategories.length > 0
 
   return (
     <div className="sticky top-[var(--topbar-h)] z-[var(--z-sticky)] -mx-4 mb-4 border-b border-line bg-canvas/92 px-4 pt-3 pb-2.5 backdrop-blur-md sm:-mx-6 sm:px-6">
@@ -208,9 +208,8 @@ export function BrowseToolbar({
           value={kind}
           onChange={onKindChange}
           options={[
-            { value: "all", label: "All" },
-            { value: "video", label: "Videos", icon: "film" },
             { value: "course", label: "Courses", icon: "book" },
+            { value: "video", label: "Videos", icon: "film" },
             { value: "commentary", label: "Smurfs", icon: "users" },
           ]}
         />
@@ -261,7 +260,7 @@ export function BrowseToolbar({
             onClick={() => {
               onQueryChange("")
               onRoleChange("all")
-              onKindChange("all")
+              onKindChange("course")
               onCategoriesChange([])
             }}
             className="text-ink-dim"

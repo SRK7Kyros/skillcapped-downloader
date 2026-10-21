@@ -2,6 +2,11 @@ import { expect, test } from "@playwright/test"
 
 const PAGE_SIZE = 60
 
+const showVideos = async (page: import("@playwright/test").Page) => {
+  await page.getByRole("tab", { name: "Videos" }).click()
+  await expect(page.getByRole("tab", { name: "Videos" })).toHaveAttribute("aria-selected", "true")
+}
+
 test.describe("browse", () => {
   test("renders the catalogue without console errors", async ({ page }) => {
     const errors: string[] = []
@@ -19,8 +24,16 @@ test.describe("browse", () => {
     expect(titles.length).toBeGreaterThan(0)
     expect(titles.filter((title) => /[{}]/.test(title))).toEqual([])
 
-    await expect(page.getByText(/\d+ items/).first()).toBeVisible()
+    await expect(page.getByText(/\d+ of [\d,]+/).first()).toBeVisible()
     expect(errors).toEqual([])
+  })
+
+  test("opens on courses, with no catch-all tab", async ({ page }) => {
+    await page.goto("/")
+    await expect(page.getByRole("tab", { name: "Courses" })).toHaveAttribute("aria-selected", "true")
+    await expect(page.getByRole("tab", { name: /^All$/ })).toHaveCount(0)
+    await expect(page.locator("article").first()).toBeVisible()
+    await expect(page.locator("article").first()).toContainText(/lessons|not published/i)
   })
 
   test("ranks the obvious match first", async ({ page }) => {
@@ -30,6 +43,7 @@ test.describe("browse", () => {
     await page.getByPlaceholder(/Search/).fill("wave control")
     await expect(page.locator("article").first()).toContainText(/wave control/i)
 
+    await showVideos(page)
     await page.getByPlaceholder(/Search/).fill("gankng mechanics")
     await expect(page.locator("article").first()).toContainText(/ganking mechanics/i)
 
@@ -40,6 +54,7 @@ test.describe("browse", () => {
   test("selects with the checkbox and toggles from the card body", async ({ page }) => {
     await page.goto("/")
     await expect(page.locator("article").first()).toBeVisible()
+    await showVideos(page)
 
     const card = page.locator("article").first()
     await card.locator("button[aria-pressed]").click()
@@ -53,6 +68,7 @@ test.describe("browse", () => {
   test("shift-click extends the selection over the visible page", async ({ page }) => {
     await page.goto("/")
     await expect(page.locator("article").first()).toBeVisible()
+    await showVideos(page)
 
     const cards = page.locator("article")
     await cards.nth(0).locator("button[aria-pressed]").click()
@@ -63,6 +79,7 @@ test.describe("browse", () => {
   test("opens a preview player for a video", async ({ page }) => {
     await page.goto("/")
     await expect(page.locator("article").first()).toBeVisible()
+    await showVideos(page)
 
     await page.getByRole("button", { name: /^Preview / }).first().click()
     const dialog = page.locator("[role='dialog']")

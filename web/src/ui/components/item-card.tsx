@@ -53,18 +53,24 @@ function PosterFallback({ item }: { item: CatalogItem }) {
   )
 }
 
+export type DownloadedState = { label: string; complete: boolean }
+
 export function ItemCard({
   item,
   selected,
+  open,
   downloaded,
   onToggle,
   onPreview,
+  onOpen,
 }: {
   item: CatalogItem
   selected: boolean
-  downloaded: string | null
+  open: boolean
+  downloaded: DownloadedState | null
   onToggle: (id: string, additive: boolean) => void
   onPreview: (item: CatalogItem) => void
+  onOpen: (item: CatalogItem) => void
 }) {
   const [brokenThumb, setBrokenThumb] = useState(false)
   const [ratio, setRatio] = useState<string | null>(null)
@@ -72,20 +78,32 @@ export function ItemCard({
   const showPoster = Boolean(item.thumb) && !brokenThumb
   const playable = item.kind !== "course"
   const downloadable = isDownloadable(item)
+  const expandable = item.kind === "course" && downloadable
 
   return (
     <article
       data-selected={selected ? "1" : undefined}
+      data-open={open ? "1" : undefined}
+      data-on-disk={downloaded?.complete ? "1" : downloaded ? "partial" : undefined}
       onClick={(event) => {
-        if (!downloadable || isInteractive(event.target)) return
+        if (isInteractive(event.target)) return
+        if (expandable && !event.shiftKey) {
+          onOpen(item)
+          return
+        }
+        if (!downloadable) return
         onToggle(item.id, event.shiftKey)
       }}
       className={cx(
         "group relative flex flex-col overflow-hidden rounded-[var(--r-md)] border bg-surface-1 transition-[border-color,background-color,transform] duration-[var(--dur-fast)]",
         downloadable ? "cursor-pointer" : "cursor-default",
-        selected
+        selected || open
           ? "border-brand-line bg-surface-2 shadow-[0_0_0_1px_var(--accent-line)]"
-          : "border-line hover:border-line-strong hover:bg-surface-2",
+          : downloaded?.complete
+            ? "border-success/70 shadow-[0_0_0_1px_rgba(63,185,80,0.18)] hover:border-success hover:bg-surface-2"
+            : downloaded
+              ? "border-success/45 hover:border-success/70 hover:bg-surface-2"
+              : "border-line hover:border-line-strong hover:bg-surface-2",
       )}
     >
       <div
@@ -171,13 +189,29 @@ export function ItemCard({
         {downloaded ? (
           <span className="pointer-events-none absolute bottom-1.5 left-1.5 inline-flex items-center gap-1 rounded-[var(--r-xs)] bg-success-dim px-1.5 py-0.5 text-[9.5px] font-semibold tracking-[0.04em] text-success uppercase">
             <Icon name="check" size={9} strokeWidth={3} />
-            {downloaded}
+            {downloaded.label}
           </span>
         ) : null}
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col gap-1 px-2.5 py-2">
-        <h3 className="line-clamp-2 text-[12px] leading-snug font-semibold text-ink">{item.title}</h3>
+        <h3 className="line-clamp-2 text-[12px] leading-snug font-semibold text-ink">
+          {expandable ? (
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation()
+                if (event.shiftKey) onToggle(item.id, true)
+                else onOpen(item)
+              }}
+              className="text-left tab-stop"
+            >
+              {item.title}
+            </button>
+          ) : (
+            item.title
+          )}
+        </h3>
         <p className="truncate text-[10px] text-ink-dim">
           {item.category || roleLabel(item.role)}
           {item.kind === "commentary" && item.champions ? ` · ${item.champions}` : ""}
@@ -195,6 +229,11 @@ export function ItemCard({
             </Tooltip>
           ) : item.kind === "video" ? (
             <span className="font-mono tabular-nums">{formatCount(item.durationSec)}s</span>
+          ) : expandable ? (
+            <span className="flex items-center gap-0.5 text-ink-dim">
+              Lessons
+              <Icon name="chevron-right" size={10} />
+            </span>
           ) : null}
         </div>
       </div>
