@@ -1,15 +1,32 @@
 import Hls from "hls.js"
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useState } from "react"
 import { api } from "../../api/client"
-import type { CatalogItem, Quality } from "../../api/types"
+import type { CatalogItem, PreviewInfo, Quality } from "../../api/types"
 import { formatDuration, roleVar } from "../../lib/format"
 import { Icon } from "../icons"
-import { Button, Modal, Segmented, Spinner } from "../primitives"
+import { Badge, Button, Modal, Segmented, Spinner } from "../primitives"
+
+/** Why a media element refused to play, in words a person can act on. */
+function mediaError(video: HTMLVideoElement): string {
+  switch (video.error?.code) {
+    case MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED:
+      return "This file cannot be played in the browser."
+    case MediaError.MEDIA_ERR_DECODE:
+      return "This file is damaged and cannot be decoded."
+    case MediaError.MEDIA_ERR_NETWORK:
+      return "Reading the file stopped — it may have moved."
+    default:
+      return "The preview could not be started."
+  }
+}
 
 /**
- * Preview player. There is no upstream manifest, so this plays a playlist the
- * server synthesises from the same segment URL scheme the downloader uses —
- * which makes the preview a live proof that the download path is correct.
+ * Preview player. A video that is already downloaded plays straight from the
+ * file on disk (native MP4, instant seeking); anything else streams the parts
+ * the server relays from the CDN. The element is captured through state rather
+ * than a ref: the modal mounts its content a commit later than the component
+ * that owns the effect, so a ref was still null when the source was chosen and
+ * the player never loaded anything.
  */
 export function PreviewPlayer({
   item,
@@ -26,65 +43,94 @@ export function PreviewPlayer({
   onDownload: (item: CatalogItem) => void
   onClose: () => void
 }) {
-  const videoRef = useRef<HTMLVideoElement>(null)
+  const [video, setVideo] = useState<HTMLVideoElement | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  const [source, setSource] = useState<PreviewInfo | null>(null)
 
   useEffect(() => {
-    if (!item) return
-    const video = videoRef.current
-    if (!video) return
+    if (!item || !video) return
 
-    setError(null)
-    setLoading(true)
-    const url = api.streamPlaylistUrl(item.id, quality, item.durationSec)
+    const controller = new AbortController()
+    let hls: Hls | null = null
+    let mounted = true
 
-    const nativeHls = video.canPlayType("application/vnd.apple.mpegurl") !== ""
-    if (!Hls.isSupported()) {
-      if (nativeHls) {
-        video.src = url
+    const fail = (message: string) => {
+      if (!mounted) return
+      setLoading(false)
+      setError(message)
+    }
+
+    const start = (info: PreviewInfo) => {
+      if (!mounted) return
+      setSource(info)
+
+      if (info.mode === "local") {
+        video.src = info.url
+        video.addEventListener("loadeddata", () => mounted && setLoading(false), { once: true })
+        video.addEventListener("error", () => fail(mediaError(video)), { once: true })
         void video.play().catch(() => {})
         return
       }
-      setLoading(false)
-      setError("This browser cannot play HLS streams. Downloads still work.")
-      return
+
+      if (!Hls.isSupported()) {
+        if (video.canPlayType("application/vnd.apple.mpegurl")) {
+          video.src = info.url
+          video.addEventListener("loadeddata", () => mounted && setLoading(false), { once: true })
+          void video.play().catch(() => {})
+          return
+        }
+        fail("This browser cannot play HLS streams. Downloading still works.")
+        return
+      }
+
+      hls = new Hls({ maxBufferLength: 30 })
+      hls.on(Hls.Events.MANIFEST_PARSED, () => {
+        if (!mounted) return
+        setLoading(false)
+        void video.play().catch(() => {})
+      })
+      hls.on(Hls.Events.ERROR, (_event, data) => {
+        if (!data.fatal) return
+        fail(
+          data.details === "manifestLoadError"
+            ? "This video is not published on the CDN — downloading it will fail too."
+            : `Playback stopped (${data.details}).`,
+        )
+        hls?.destroy()
+        hls = null
+      })
+      hls.loadSource(info.url)
+      hls.attachMedia(video)
     }
 
-    const hls = new Hls({ maxBufferSize: 0, maxBufferLength: 30 })
-    hls.on(Hls.Events.MANIFEST_PARSED, () => {
-      setLoading(false)
-      void video.play().catch(() => {})
-    })
-    hls.on(Hls.Events.ERROR, (_event, data) => {
-      if (!data.fatal) return
-      setLoading(false)
-      setError(
-        data.details === "manifestLoadError"
-          ? "The stream could not be located. This video may no longer be published."
-          : `Playback stopped (${data.details}).`,
-      )
-      hls.destroy()
-    })
+    setError(null)
+    setSource(null)
+    setLoading(true)
 
-    hls.loadSource(url)
-    hls.attachMedia(video)
+    void api.preview(item.id, quality, item.durationSec, controller.signal).then(start).catch((cause: unknown) => {
+      if (controller.signal.aborted) return
+      fail(cause instanceof Error ? cause.message : "The preview could not be prepared.")
+    })
 
     return () => {
-      hls.destroy()
+      mounted = false
+      controller.abort()
+      hls?.destroy()
       video.removeAttribute("src")
       video.load()
     }
-  }, [item, quality])
+  }, [video, item, quality])
 
   const color = item ? roleVar(item.role) : "var(--accent)"
+  const local = source?.mode === "local"
 
   return (
     <Modal open={Boolean(item)} onOpenChange={(open) => (!open ? onClose() : undefined)} title={item?.title ?? "Preview"}>
       {item ? (
         <div>
           <div className="relative aspect-video w-full bg-black">
-            <video ref={videoRef} controls playsInline className="h-full w-full" />
+            <video ref={setVideo} controls playsInline className="h-full w-full" />
             {loading && !error ? (
               <div className="pointer-events-none absolute inset-0 grid place-items-center">
                 <Spinner size={22} className="text-white/70" />
@@ -115,12 +161,18 @@ export function PreviewPlayer({
               </p>
             </div>
 
-            <Segmented
-              ariaLabel="Preview quality"
-              value={String(quality)}
-              onChange={(value) => onQualityChange(Number(value))}
-              options={qualities.map((option) => ({ value: String(option.id), label: option.short }))}
-            />
+            {local ? (
+              <Badge className="h-6 px-2 text-[10px]" color="var(--success)">
+                From disk{source.label ? ` · ${source.label}` : ""}
+              </Badge>
+            ) : (
+              <Segmented
+                ariaLabel="Preview quality"
+                value={String(quality)}
+                onChange={(value) => onQualityChange(Number(value))}
+                options={qualities.map((option) => ({ value: String(option.id), label: option.short }))}
+              />
+            )}
 
             <Button variant="primary" icon="download" onClick={() => onDownload(item)}>
               Download

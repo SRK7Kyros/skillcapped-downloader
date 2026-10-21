@@ -79,8 +79,15 @@ in a Firestore document, so the catalogue is discovered — not hardcoded:
    clears the job's scratch folder — a failure never leaves partial output in
    `content/`.
 
-The UI's preview player consumes a playlist the server synthesises from the same
-segment scheme, which makes it a live check that the download path is correct.
+The preview player picks its source per video. A lesson that is already on disk
+plays straight from the file through `/api/media/…`, which answers `Range:`
+requests so the browser can seek — and because a lot of the catalogue is no
+longer published upstream, that file is often the only copy left. Anything else
+streams from the CDN through this server: the playlist is synthesised from the
+same segment scheme the downloader uses (a live check that the download path is
+correct) and every part is relayed by `/api/segment/…`, so the browser only ever
+talks to one origin and a part the CDN refuses becomes a plain `404` instead of
+an S3 error document.
 
 The downloads panel reads as a queue, not a feed. One bar covers the whole queue
 (every item counted by its own percentage, with the aggregate speed and the

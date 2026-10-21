@@ -3,10 +3,13 @@
  * shared by every request.
  */
 
-import { QUALITIES, buildPlaylist, qualityById } from "../core/cdn.ts"
+import path from "node:path"
+import { QUALITIES, buildPlaylist, qualityById, segmentUrl } from "../core/cdn.ts"
 import { loadCatalog } from "../core/catalog.ts"
 import { libraryKey, scanLibrary } from "../core/library.ts"
 import { SegmentError, resolveSegmentCount } from "../core/probe.ts"
+import { planPreview } from "../core/preview.ts"
+import { contentRange, parseByteRange } from "../core/range.ts"
 import type { DownloadManager, JobRecord, JobSpec } from "../core/queue.ts"
 import type { Flags } from "../flags.ts"
 import { openFolder } from "../open-browser.ts"
@@ -114,6 +117,12 @@ async function dispatch(
       return handleOpenFolder(method, context)
     case "stream":
       return handleStream(request, url, rest, context, store)
+    case "preview":
+      return handlePreview(url, rest, context)
+    case "media":
+      return handleMedia(request, url, rest, context)
+    case "segment":
+      return handleSegment(request, rest)
     default:
       return json({ error: `Unknown endpoint /api/${resource}` }, 404)
   }
@@ -333,6 +342,108 @@ async function handleStream(
       "content-length": String(Buffer.byteLength(playlist)),
     },
   })
+}
+
+async function handlePreview(url: URL, rest: string[], context: AppContext): Promise<Response> {
+  const uuid = (rest[0] ?? "").replace(/\.(m3u8|mp4)$/i, "")
+  if (!uuid) return json({ error: "A video id is required" }, 400)
+
+  const quality = qualityById(Number(url.searchParams.get("quality")))?.id ?? context.flags.quality
+  const durationSec = Number(url.searchParams.get("dur")) || 0
+  const library = await scanLibrary(context.root)
+
+  return json({ uuid, durationSec, ...planPreview(uuid, quality, durationSec, library.entries) })
+}
+
+const MEDIA_TYPES: Record<string, string> = {
+  mp4: "video/mp4",
+  ts: "video/mp2t",
+  m4v: "video/x-m4v",
+}
+
+/**
+ * A finished download, with byte ranges so the preview can seek. Only paths the
+ * library scan produced are served — the uuid is looked up in that index rather
+ * than joined into a path, so a request cannot walk out of the content folder.
+ */
+async function handleMedia(request: Request, url: URL, rest: string[], context: AppContext): Promise<Response> {
+  const uuid = (rest[0] ?? "").replace(/\.[a-z0-9]+$/i, "")
+  if (!uuid) return json({ error: "A video id is required" }, 400)
+
+  const wanted = url.searchParams.get("quality") ?? ""
+  const library = await scanLibrary(context.root)
+  const candidates = library.entries.filter((entry) => entry.uuid === uuid)
+  const entry = (wanted ? candidates.find((candidate) => candidate.qualityLabel === wanted) : undefined) ?? candidates[0]
+  if (!entry) return json({ error: "That video is not on disk." }, 404)
+
+  const root = path.resolve(context.root)
+  const absolute = path.resolve(root, entry.relativePath)
+  if (absolute !== root && !absolute.startsWith(root + path.sep)) {
+    return json({ error: "That file is outside the content folder." }, 400)
+  }
+
+  const file = Bun.file(absolute)
+  const stat = await file.stat().catch(() => null)
+  if (!stat) return json({ error: "That file is no longer there." }, 404)
+
+  const headers: Record<string, string> = {
+    "content-type": MEDIA_TYPES[entry.extension.toLowerCase()] ?? "application/octet-stream",
+    "accept-ranges": "bytes",
+    "cache-control": "private, max-age=0, must-revalidate",
+    etag: `"${stat.size.toString(36)}-${Math.round(stat.mtimeMs).toString(36)}"`,
+  }
+
+  const range = parseByteRange(request.headers.get("range"), stat.size)
+  if (range === "unsatisfiable") {
+    return new Response(null, { status: 416, headers: { ...headers, "content-range": `bytes */${stat.size}` } })
+  }
+  if (range) {
+    return new Response(file.slice(range.start, range.end + 1), {
+      status: 206,
+      headers: {
+        ...headers,
+        "content-range": contentRange(range, stat.size),
+        "content-length": String(range.end - range.start + 1),
+      },
+    })
+  }
+  return new Response(file, { headers: { ...headers, "content-length": String(stat.size) } })
+}
+
+/**
+ * One CDN part, relayed. Playlists point here so the browser stays on this
+ * origin — the CDN's CORS policy, and its S3 error documents, never reach us.
+ */
+async function handleSegment(request: Request, rest: string[]): Promise<Response> {
+  const [uuid, qualityRaw, fileName] = rest
+  const index = Number((fileName ?? "").replace(/\.ts$/i, ""))
+  const quality = qualityById(Number(qualityRaw))?.id
+
+  if (!uuid || !quality || !Number.isInteger(index) || index < 1) {
+    return json({ error: "Malformed segment address." }, 400)
+  }
+
+  let upstream: Response
+  try {
+    upstream = await fetch(segmentUrl(uuid, quality, index), { signal: request.signal })
+  } catch (error) {
+    if (request.signal.aborted) return new Response(null, { status: 499 })
+    throw error
+  }
+
+  // Past the tail, or a video the CDN no longer publishes.
+  if (!upstream.ok || !upstream.body) {
+    return json({ error: `Part ${index} is not available.` }, 404)
+  }
+
+  const headers: Record<string, string> = {
+    "content-type": "video/mp2t",
+    "cache-control": "public, max-age=3600",
+  }
+  const length = upstream.headers.get("content-length")
+  if (length) headers["content-length"] = length
+
+  return new Response(upstream.body, { status: 200, headers })
 }
 
 function eventsStream(context: AppContext): Response {

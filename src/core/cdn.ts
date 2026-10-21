@@ -31,15 +31,25 @@ export function segmentUrl(uuid: string, quality: number, index: number): string
   return `${CDN_ORIGIN}/${uuid}/HIDDEN${quality}-${padded}.ts`
 }
 
+/**
+ * The same part, addressed on this server. The preview player streams through
+ * `/api/segment/…` instead of straight from CloudFront: one origin for the
+ * page, no CORS dependency on someone else's distribution, and a place to
+ * answer a missing part with a plain 404 instead of an S3 error document.
+ */
+export function segmentPath(uuid: string, quality: number, index: number): string {
+  const padded = String(index).padStart(5, "0")
+  return `/api/segment/${encodeURIComponent(uuid)}/${quality}/${padded}.ts`
+}
+
 /** Fallback segment count when nothing better is known (duration / 10). */
 export function expectedSegmentCount(durationSec: number): number {
   return Math.max(1, Math.ceil((durationSec || 0) / SEGMENT_SECONDS))
 }
 
 /**
- * A synthetic VOD playlist pointing straight at the CDN parts. The browser
- * plays it directly (CloudFront sends `Access-Control-Allow-Origin: *`), which
- * is how the preview player works without a server-side proxy.
+ * A synthetic VOD playlist. There is no upstream manifest, so the list is
+ * derived from the probe and every entry is a part on this server.
  */
 export function buildPlaylist(uuid: string, quality: number, segmentCount: number, durationSec: number): string {
   const target = Math.max(SEGMENT_SECONDS, Math.ceil(durationSec / Math.max(1, segmentCount)))
@@ -51,7 +61,7 @@ export function buildPlaylist(uuid: string, quality: number, segmentCount: numbe
     "#EXT-X-MEDIA-SEQUENCE:0",
   ]
   for (let index = 1; index <= segmentCount; index++) {
-    lines.push(`#EXTINF:${SEGMENT_SECONDS}.0,`, segmentUrl(uuid, quality, index))
+    lines.push(`#EXTINF:${SEGMENT_SECONDS}.0,`, segmentPath(uuid, quality, index))
   }
   lines.push("#EXT-X-ENDLIST")
   return lines.join("\n") + "\n"

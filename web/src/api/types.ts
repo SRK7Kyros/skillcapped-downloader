@@ -243,3 +243,16 @@ export const librarySchema = z.object({
     )
     .catch([]),
 })
+
+/** Where the preview player should load this video from. */
+export const previewSchema = z.object({
+  uuid: z.string(),
+  durationSec: z.number().catch(0),
+  mode: z.enum(["local", "remote"]).catch("remote"),
+  url: z.string(),
+  quality: z.number().nullable().catch(null),
+  label: z.string().catch(""),
+  sizeBytes: z.number().catch(0),
+})
+
+export type PreviewInfo = z.infer<typeof previewSchema>

@@ -6,6 +6,7 @@ import {
   expectedSegmentCount,
   qualityById,
   qualityLabel,
+  segmentPath,
   segmentUrl,
 } from "../../src/core/cdn.ts"
 
@@ -68,9 +69,15 @@ describe("buildPlaylist", () => {
   test("emits one entry per part, in order, and nothing beyond the list", () => {
     const playlist = buildPlaylist("abc123abcd", 2500, 13, 123)
     expect(playlist.split("#EXTINF:").length - 1).toBe(13)
-    expect(playlist).toContain(segmentUrl("abc123abcd", 2500, 1))
-    expect(playlist).toContain(segmentUrl("abc123abcd", 2500, 13))
-    expect(playlist).not.toContain(segmentUrl("abc123abcd", 2500, 14))
+    expect(playlist).toContain(segmentPath("abc123abcd", 2500, 1))
+    expect(playlist).toContain(segmentPath("abc123abcd", 2500, 13))
+    expect(playlist).not.toContain(segmentPath("abc123abcd", 2500, 14))
+  })
+
+  test("points every part at this server, never at the CDN", () => {
+    const playlist = buildPlaylist("abc123abcd", 2500, 2, 20)
+    expect(playlist).not.toContain(CDN_ORIGIN)
+    expect(playlist).toContain("/api/segment/abc123abcd/2500/00001.ts")
   })
 
   test("keeps the target duration at least one segment long", () => {

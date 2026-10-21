@@ -4,11 +4,13 @@ import {
   jobsResponseSchema,
   librarySchema,
   metaSchema,
+  previewSchema,
   type CatalogResponse,
   type CreateJobsResponse,
   type JobRecord,
   type LibraryResponse,
   type Meta,
+  type PreviewInfo,
 } from "./types"
 
 export class ApiError extends Error {
@@ -85,9 +87,14 @@ export const api = {
     await request("/api/open-folder", { method: "POST" })
   },
 
-  /** Synthetic VOD playlist the preview player feeds to hls.js. */
-  streamPlaylistUrl(uuid: string, quality: number, durationSec: number): string {
-    const params = new URLSearchParams({ quality: String(quality), dur: String(Math.round(durationSec)) })
-    return `/api/stream/${uuid}.m3u8?${params.toString()}`
+  /** The source the preview should play: the file on disk, else the CDN. */
+  async preview(uuid: string, quality: number, durationSec: number, signal?: AbortSignal): Promise<PreviewInfo> {
+    const params = new URLSearchParams({
+      quality: String(quality),
+      dur: String(Math.max(0, Math.round(durationSec || 0))),
+    })
+    return previewSchema.parse(
+      await request(`/api/preview/${encodeURIComponent(uuid)}?${params.toString()}`, { signal }),
+    )
   },
 }
