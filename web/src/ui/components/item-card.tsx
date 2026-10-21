@@ -195,7 +195,7 @@ export function ItemCard({
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col gap-1 px-2.5 py-2">
-        <h3 className="line-clamp-2 text-[12px] leading-snug font-semibold text-ink">
+        <h3 className="line-clamp-2 min-h-[2.75em] text-[12px] leading-snug font-semibold text-ink">
           {expandable ? (
             <button
               type="button"

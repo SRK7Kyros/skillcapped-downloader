@@ -115,9 +115,9 @@ course to the bulk selection.
 - **Cards take their media shape from the art, not a house ratio.** Course banners
   are 576×912 portrait cards with the title baked in, video stills are 1280×720,
   so each card's media box adopts the poster's own aspect ratio (a 2:3 or 16:9
-  placeholder stands in until it loads) instead of cropping to 16:9. Mixing the
-  two shapes in one row leaves the shorter cards short; the grid aligns to the top
-  rather than stretching them.
+  placeholder stands in until it loads) instead of cropping to 16:9. Every card
+  reserves two title lines, so the cards in a row are exactly the same height
+  whatever their titles say, and the grid aligns to the top.
 - **Four courses have no published lessons.** Their cards say so and cannot be
   selected.
 - Course titles contain role placeholders (`Wave Control {support}`); they are

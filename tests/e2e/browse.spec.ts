@@ -141,6 +141,27 @@ test.describe("browse", () => {
       .toBeLessThan(0.02)
   })
 
+  test("gives every card in a row the same height", async ({ page }) => {
+    await page.goto("/")
+    await expect(page.locator("article").first()).toBeVisible()
+
+    const unevenRows = () =>
+      page.evaluate(`(() => {
+        const rows = new Map()
+        for (const card of [...document.querySelectorAll("article")].slice(0, 24)) {
+          const rect = card.getBoundingClientRect()
+          const key = Math.round(rect.top)
+          if (!rows.has(key)) rows.set(key, new Set())
+          rows.get(key).add(Math.round(rect.height))
+        }
+        return [...rows.values()].filter((heights) => heights.size > 1).length
+      })()`) as Promise<number>
+
+    expect(await unevenRows()).toBe(0)
+    await showVideos(page)
+    expect(await unevenRows()).toBe(0)
+  })
+
   test("fits the viewport at 375 and 768 without overflow", async ({ page }) => {
     for (const width of [375, 768]) {
       await page.setViewportSize({ width, height: 800 })
