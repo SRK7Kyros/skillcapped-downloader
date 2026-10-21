@@ -202,12 +202,15 @@ export function BrowseView({
   const openIndex = openCourse ? visible.findIndex((item) => item.id === openCourse.id) : -1
   const openColumn = openIndex >= 0 ? (openIndex % columns) + 1 : 0
   const openRow = openIndex >= 0 ? Math.floor(openIndex / columns) + 1 : 0
-  const beside = openColumn > 0 && columns - openColumn >= 2
+  const room = openColumn > 0 ? columns - openColumn : 0
+  const halfTheGrid = Math.max(2, Math.round(columns / 2))
+  const panelSpan = Math.min(room, halfTheGrid)
+  const beside = panelSpan >= 2
   const placement: CSSProperties | null =
     openIndex < 0
       ? null
       : beside
-        ? { gridColumn: `${openColumn + 1} / -1`, gridRow: `${openRow}` }
+        ? { gridColumn: `${openColumn + 1} / span ${panelSpan}`, gridRow: `${openRow}` }
         : { gridColumn: "1 / -1", gridRow: `${openRow + 1}` }
 
   useEscape(() => setOpenCourseId(null), Boolean(openCourseId) && !preview)

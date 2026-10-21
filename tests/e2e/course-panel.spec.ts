@@ -67,13 +67,18 @@ test.describe("course panel", () => {
     await expect(card).not.toHaveAttribute("data-open", "1")
   })
 
-  test("opens beside the card and slides the rest of the grid", async ({ page }) => {
+  test("opens beside the card, sliding the rest right and wrapping only the ones that no longer fit", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1440, height: 900 })
     await page.goto("/")
     const cards = page.locator("article")
     await expect(cards.first()).toBeVisible()
 
-    const before = await cards.nth(1).boundingBox()
+    const before = await cards.nth(0).boundingBox()
+    const beforeNeighbour = await cards.nth(1).boundingBox()
     expect(before).not.toBeNull()
+    expect(beforeNeighbour).not.toBeNull()
 
     await cards.nth(0).locator("h3 button").click()
     const panel = panelOf(page)
@@ -89,9 +94,13 @@ test.describe("course panel", () => {
     }
     await expect.poll(edgeOffset).toBeLessThanOrEqual(1)
 
-    await expect.poll(async () => Math.round((await cards.nth(1).boundingBox())?.y ?? 0)).toBeGreaterThan(
-      Math.round((before?.y ?? 0) + (card?.height ?? 0) / 2),
-    )
+    const rowOf = async (index: number) => Math.round((await cards.nth(index).boundingBox())?.y ?? 0)
+    const closedRow = Math.round(before?.y ?? 0)
+    await expect.poll(() => rowOf(1)).toBe(closedRow)
+    await expect
+      .poll(async () => Math.round((await cards.nth(1).boundingBox())?.x ?? 0))
+      .toBeGreaterThan(Math.round((beforeNeighbour?.x ?? 0) + 10))
+    await expect.poll(() => rowOf(2)).toBeGreaterThan(Math.round(closedRow + (card?.height ?? 0) / 2))
 
     await page.getByRole("button", { name: "Close lessons" }).click()
     await expect(panel).toHaveCount(0)
