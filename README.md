@@ -98,6 +98,12 @@ correct even if you move files around inside `content/`.
 - **No posters for most of the library.** Roughly two thirds of the videos and all
   commentaries predate SkillCapped's poster migration, so the card's no-image
   state is the common case by design and shows the role plus the kind.
+- **Cards take their media shape from the art, not a house ratio.** Course banners
+  are 576×912 portrait cards with the title baked in, video stills are 1280×720,
+  so each card's media box adopts the poster's own aspect ratio (a 2:3 or 16:9
+  placeholder stands in until it loads) instead of cropping to 16:9. Mixing the
+  two shapes in one row leaves the shorter cards short; the grid aligns to the top
+  rather than stretching them.
 - **Four courses have no published lessons.** Their cards say so and cannot be
   selected.
 - Course titles contain role placeholders (`Wave Control {support}`); they are

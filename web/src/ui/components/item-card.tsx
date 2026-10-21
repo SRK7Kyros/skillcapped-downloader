@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react"
 import type { CatalogItem } from "../../api/types"
 import { formatCount, formatDate, formatDuration, roleLabel, roleShort, roleVar } from "../../lib/format"
+import { imageRatio, posterRatio } from "../../lib/media"
 import { Icon, type IconName } from "../icons"
 import { Badge, Tooltip, cx } from "../primitives"
 
@@ -66,6 +67,7 @@ export function ItemCard({
   onPreview: (item: CatalogItem) => void
 }) {
   const [brokenThumb, setBrokenThumb] = useState(false)
+  const [ratio, setRatio] = useState<string | null>(null)
   const color = roleVar(item.role)
   const showPoster = Boolean(item.thumb) && !brokenThumb
   const playable = item.kind !== "course"
@@ -86,7 +88,10 @@ export function ItemCard({
           : "border-line hover:border-line-strong hover:bg-surface-2",
       )}
     >
-      <div className="relative aspect-video w-full overflow-hidden bg-surface-2">
+      <div
+        className="relative w-full overflow-hidden bg-surface-2"
+        style={{ aspectRatio: ratio ?? posterRatio(item.kind) }}
+      >
         {showPoster ? (
           <img
             src={item.thumb}
@@ -94,6 +99,7 @@ export function ItemCard({
             loading="lazy"
             decoding="async"
             onError={() => setBrokenThumb(true)}
+            onLoad={(event) => setRatio(imageRatio(event.currentTarget.naturalWidth, event.currentTarget.naturalHeight))}
             className="h-full w-full object-cover transition-transform duration-[var(--dur-slow)] ease-out group-hover:scale-[1.03]"
           />
         ) : (

@@ -98,6 +98,30 @@ test.describe("browse", () => {
     await expect(footer).toContainText(/\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)/)
     await expect(footer).not.toContainText(/tags/i)
     await expect(card.getByText(/^\d+ lessons$/)).toHaveCount(1)
+
+    // The banner is portrait art (576×912, title baked into the top). A 16:9 box with
+    // object-cover threw the title and two thirds of the picture away; the card must
+    // now take the poster's own shape.
+    const shapeOf = `(() => {
+      const img = document.querySelectorAll("article img")[0]
+      const rect = img.getBoundingClientRect()
+      return {
+        naturalWidth: img.naturalWidth,
+        naturalHeight: img.naturalHeight,
+        width: rect.width,
+        height: rect.height,
+      }
+    })()`
+
+    await expect
+      .poll(
+        async () => {
+          const shape = (await page.evaluate(shapeOf)) as { width: number; height: number; naturalWidth: number; naturalHeight: number }
+          return Number(Math.abs(shape.height / shape.width - shape.naturalHeight / shape.naturalWidth).toFixed(4))
+        },
+        { timeout: 5000, message: "the card must keep the poster's own shape" },
+      )
+      .toBeLessThan(0.02)
   })
 
   test("fits the viewport at 375 and 768 without overflow", async ({ page }) => {
