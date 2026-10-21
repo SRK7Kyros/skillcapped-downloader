@@ -1,0 +1,135 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version without the leading v (defaults to the version in package.json)"
+        required: false
+        type: string
+      prerelease:
+        description: "Mark the published release as a pre-release"
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+env:
+  BUN_VERSION: "1.4.2"
+
+jobs:
+  verify:
+    name: typecheck and unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+      - run: bun install --frozen-lockfile
+      - run: bun run typecheck
+      - run: bun run test
+
+  build:
+    name: ${{ matrix.target }}
+    needs: verify
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: linux-x64
+            file: skillcapped-downloader-linux-x64
+          - target: windows-x64
+            file: skillcapped-downloader-windows-x64.exe
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+      - run: bun install --frozen-lockfile
+      - run: bun run build:web
+      - run: bun run build:exe ${{ matrix.target }}
+      - if: matrix.target == 'linux-x64'
+        run: |
+          ./dist/skillcapped-downloader-linux-x64 --port 4788 --no-open &
+          pid=$!
+          ok=0
+          for _ in $(seq 1 40); do
+            if curl -fsS http://127.0.0.1:4788/health > /dev/null 2>&1; then ok=1; break; fi
+            sleep 0.5
+          done
+          kill "$pid" 2> /dev/null || true
+          wait "$pid" 2> /dev/null || true
+          if [ "$ok" != 1 ]; then
+            echo "the compiled binary never answered /health"
+            exit 1
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.target }}
+          path: dist/${{ matrix.file }}
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: publish release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - id: version
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          version="${INPUT_VERSION#v}"
+          if [ -z "$version" ]; then
+            version="$(jq -r .version package.json)"
+          fi
+          echo "tag=v$version" >> "$GITHUB_OUTPUT"
+          echo "value=$version" >> "$GITHUB_OUTPUT"
+
+      - run: |
+          cd dist
+          sha256sum skillcapped-downloader-linux-x64 skillcapped-downloader-windows-x64.exe > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
+          PRERELEASE: ${{ inputs.prerelease }}
+        run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "$TAG already exists - replacing its assets"
+          else
+            flags=()
+            if [ "$PRERELEASE" = "true" ]; then flags+=(--prerelease); fi
+            gh release create "$TAG" \
+              --target "$GITHUB_SHA" \
+              --title "skillcapped-downloader $TAG" \
+              --generate-notes \
+              "${flags[@]}"
+          fi
+          gh release upload "$TAG" \
+            dist/skillcapped-downloader-linux-x64 \
+            dist/skillcapped-downloader-windows-x64.exe \
+            dist/SHA256SUMS.txt \
+            --clobber
+
+      - env:
+          TAG: ${{ steps.version.outputs.tag }}
+          REPO: ${{ github.repository }}
+        run: echo "Published $TAG - https://github.com/$REPO/releases/tag/$TAG"

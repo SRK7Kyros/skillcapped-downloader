@@ -156,3 +156,14 @@ executable has no sidecar assets at all. That embedded copy
 (`src/server/web.html`) is committed, and the repo is LF-only (`.gitattributes`),
 so a Windows checkout cannot regenerate it with CRLF line endings and leave the
 tree permanently dirty.
+
+### Releases
+
+`.github/workflows/release.yml` is manual (`Actions → Release → Run workflow`).
+It typechecks, runs the unit suite, then compiles **linux-x64** and **windows-x64**
+on `ubuntu-latest` (Bun cross-compiles, so no Windows runner is involved; the
+x64 Linux binary is smoke-tested by booting it and waiting for `/health` before
+anything is published), and finally creates — or re-uploads onto — the `v<version>`
+release with both binaries and `SHA256SUMS.txt`. The `version` input defaults to
+`package.json`, and `prerelease` marks the run as a pre-release. Assets are
+replaced with `--clobber`, so re-running a version is safe.
