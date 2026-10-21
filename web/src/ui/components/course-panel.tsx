@@ -7,6 +7,12 @@ import { Icon } from "../icons"
 import { Button, Chip, IconButton, ProgressBar, cx } from "../primitives"
 import { LessonCard } from "./lesson-card"
 
+const STRIP_ROWS = 2
+const STRIP_GAP = 8
+const CARD_BORDER = 2
+const TITLE_BLOCK = 44
+const STACKED_STRIP_HEIGHT = 296
+
 export function CoursePanel({
   course,
   lessons,
@@ -48,6 +54,14 @@ export function CoursePanel({
   const reduce = useReducedMotion()
   const panel = useRef<HTMLElement>(null)
 
+  const stacked = !attached
+  // A lesson card is sized from the strip height so its poster is never cropped horizontally.
+  const stripHeight = stacked ? STACKED_STRIP_HEIGHT : height
+  const rowHeight = stripHeight ? (stripHeight - STRIP_GAP * (STRIP_ROWS - 1)) / STRIP_ROWS : 0
+  const posterHeight = Math.max(56, rowHeight - TITLE_BLOCK)
+  const lessonWidth = stripHeight ? Math.ceil((posterHeight * 16) / 9) + CARD_BORDER : 168
+  const infoWidth = Math.min(220, Math.max(188, Math.round(lessonWidth * 0.6)))
+
   useEffect(() => {
     panel.current?.focus({ preventScroll: true })
   }, [course.id])
@@ -63,86 +77,139 @@ export function CoursePanel({
       animate={{ opacity: 1, x: 0 }}
       exit={{ opacity: 0, x: reduce ? 0 : -28 }}
       transition={reduce ? { duration: 0 } : { type: "spring", stiffness: 380, damping: 36, mass: 0.85 }}
-      style={{ ...placement, height: height || undefined }}
+      style={{ ...placement, height: stacked ? undefined : height || undefined }}
       className={cx(
-        "flex min-w-0 self-start overflow-hidden rounded-[var(--r-md)] border border-brand-line bg-surface-1 outline-none shadow-[0_0_0_1px_var(--accent-line)] @container",
+        "flex min-w-0 self-start overflow-hidden rounded-[var(--r-md)] border border-brand-line bg-surface-1 outline-none shadow-[0_0_0_1px_var(--accent-line)]",
         attached && "-ml-2.5 rounded-l-none",
       )}
     >
-      <aside className="flex w-[136px] shrink-0 flex-col gap-2 overflow-hidden border-r border-line p-2.5 @[440px]:w-[168px] @[640px]:w-[196px]">
-        <div className="flex items-start gap-1">
-          <div className="min-w-0 flex-1">
-            <p className="text-[9.5px] font-semibold tracking-[0.06em] text-ink-faint uppercase">
-              {roleLabel(course.role)} · {formatDate(course.date)}
-            </p>
-            <h2 className="mt-1 line-clamp-3 text-[12px] font-semibold leading-snug text-ink">{course.title}</h2>
-          </div>
-          <IconButton icon="x" label="Close lessons" onClick={onClose} />
-        </div>
-
-        <div>
-          <ProgressBar
-            value={state.total ? (state.have / state.total) * 100 : 0}
-            tone={state.complete ? "success" : "brand"}
-          />
-          <p className="mt-1 text-[10px] text-ink-muted tabular-nums">
-            {state.have} of {state.total} on disk
-          </p>
-          {state.complete ? (
-            <p className="mt-0.5 inline-flex items-center gap-1 text-[9.5px] font-semibold tracking-[0.04em] text-success uppercase">
-              <Icon name="check" size={9} strokeWidth={3} />
-              Complete
-            </p>
-          ) : (
-            <p className="mt-0.5 text-[10px] text-ink-faint tabular-nums">{missing.length} to go</p>
+      <div className={cx("flex min-w-0 flex-1 gap-2 p-2", stacked ? "flex-col" : "items-stretch")}>
+        <div
+          data-course-info={course.id}
+          style={stacked ? undefined : { width: infoWidth }}
+          className={cx(
+            "flex shrink-0 flex-col overflow-hidden rounded-[var(--r-md)] border border-line bg-surface-2",
+            stacked && "relative w-full",
           )}
-        </div>
+        >
+          {stacked ? null : (
+            <div className="relative h-2/5 min-h-[88px] shrink-0 overflow-hidden bg-surface-3">
+              {course.thumb ? (
+                <img
+                  src={course.thumb}
+                  alt=""
+                  loading="lazy"
+                  decoding="async"
+                  className="h-full w-full object-cover"
+                />
+              ) : null}
+              <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-surface-2 via-surface-2/25 to-transparent" />
+              <span className="absolute top-1.5 left-1.5 rounded-[var(--r-xs)] bg-black/60 px-1.5 py-0.5 text-[9px] font-semibold tracking-[0.06em] text-white/85 uppercase">
+                {roleLabel(course.role)}
+              </span>
+              <span className="absolute top-1 right-1">
+                <IconButton icon="x" label="Close lessons" onClick={onClose} />
+              </span>
+            </div>
+          )}
 
-        <div className="mt-auto flex flex-col gap-1.5">
-          <p className="text-[9.5px] leading-snug text-ink-faint">Shift-click a range, Ctrl-click one.</p>
-          <div className="flex flex-wrap gap-1">
-            <Chip onClick={onSelectAll} className="text-ink-muted">
-              <Icon name="plus" size={10} />
-              Select all
-            </Chip>
-            <Chip onClick={onClear} className="text-ink-dim">
-              <Icon name="minus" size={10} />
-              Clear
-            </Chip>
-          </div>
-          <span className="text-[10px] text-ink-faint tabular-nums">{selectedCount} selected</span>
-          <Button
-            variant="primary"
-            size="sm"
-            className="w-full"
-            icon="download"
-            loading={busy}
-            disabled={!queue.length}
-            onClick={() => onDownload(queue)}
+          <div
+            className={cx(
+              "flex min-h-0 flex-1 flex-col p-2.5",
+              stacked && "gap-2 sm:flex-row sm:items-end sm:gap-4 sm:pr-10",
+            )}
           >
-            {selected.length
-              ? `Download ${selected.length} selected`
-              : missing.length
-                ? `Download ${missing.length} missing`
-                : "Every lesson is on disk"}
-          </Button>
-        </div>
-      </aside>
+            <div className="min-w-0 flex-1">
+              <p className="flex items-center gap-1.5 text-[9.5px] font-semibold tracking-[0.06em] text-ink-faint uppercase">
+                {stacked ? (
+                  <span className="rounded-[var(--r-xs)] bg-surface-3 px-1.5 py-0.5 text-ink-muted">
+                    {roleLabel(course.role)}
+                  </span>
+                ) : null}
+                {formatDate(course.date)}
+              </p>
+              <h2 className="mt-0.5 line-clamp-3 text-[12px] font-semibold leading-snug text-ink">{course.title}</h2>
 
-      <div className="min-w-0 flex-1 overflow-x-auto overflow-y-hidden p-2 [mask-image:linear-gradient(to_right,black_calc(100%_-_26px),transparent)]">
-        <ol className="grid h-full grid-flow-col grid-rows-2 auto-cols-[minmax(148px,1fr)] gap-2 @[560px]:auto-cols-[minmax(168px,1fr)]">
-          {lessons.map((lesson, index) => (
-            <LessonCard
-              key={lesson.id}
-              lesson={lesson}
-              index={index}
-              selected={isSelected(lesson.id)}
-              quality={downloaded.get(lesson.id)}
-              onToggle={onToggleLesson}
-              onPreview={onPreview}
-            />
-          ))}
-        </ol>
+              <div className="mt-2">
+                <ProgressBar
+                  value={state.total ? (state.have / state.total) * 100 : 0}
+                  tone={state.complete ? "success" : "brand"}
+                />
+                <div className="mt-1 flex items-baseline justify-between gap-2 text-[10px] tabular-nums">
+                  <span className="text-ink-muted">
+                    {state.have} of {state.total} on disk
+                  </span>
+                  {state.complete ? (
+                    <span className="inline-flex items-center gap-1 text-[9.5px] font-semibold tracking-[0.04em] text-success uppercase">
+                      <Icon name="check" size={9} strokeWidth={3} />
+                      Complete
+                    </span>
+                  ) : (
+                    <span className="text-ink-faint">{missing.length} to go</span>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className={cx("flex flex-col gap-1.5", stacked ? "sm:w-56 sm:shrink-0" : "mt-auto pt-2")}>
+              <div className="flex flex-wrap gap-1">
+                <Chip onClick={onSelectAll} className="text-ink-muted">
+                  <Icon name="plus" size={10} />
+                  Select all
+                </Chip>
+                <Chip onClick={onClear} className="text-ink-dim">
+                  <Icon name="minus" size={10} />
+                  Clear
+                </Chip>
+              </div>
+              <span className="text-[10px] text-ink-faint tabular-nums">{selectedCount} selected</span>
+              <Button
+                variant="primary"
+                size="sm"
+                className="w-full"
+                icon="download"
+                loading={busy}
+                disabled={!queue.length}
+                onClick={() => onDownload(queue)}
+              >
+                {selected.length
+                  ? `Download ${selected.length} selected`
+                  : missing.length
+                    ? `Download ${missing.length} missing`
+                    : "Every lesson is on disk"}
+              </Button>
+            </div>
+          </div>
+
+          {stacked ? (
+            <span className="absolute top-1 right-1">
+              <IconButton icon="x" label="Close lessons" onClick={onClose} />
+            </span>
+          ) : null}
+        </div>
+
+        <div
+          style={stacked ? { height: stripHeight } : undefined}
+          className={cx(
+            "min-h-0 min-w-0 overflow-x-auto overflow-y-hidden [mask-image:linear-gradient(to_right,black_calc(100%_-_26px),transparent)]",
+            stacked ? "shrink-0" : "flex-1",
+          )}
+        >
+          <ol className="grid h-full grid-flow-col grid-rows-2 auto-cols-max gap-2">
+            {lessons.map((lesson, index) => (
+              <LessonCard
+                key={lesson.id}
+                lesson={lesson}
+                index={index}
+                width={lessonWidth}
+                selected={isSelected(lesson.id)}
+                quality={downloaded.get(lesson.id)}
+                onToggle={onToggleLesson}
+                onPreview={onPreview}
+              />
+            ))}
+          </ol>
+        </div>
       </div>
     </motion.section>
   )

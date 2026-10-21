@@ -19,6 +19,7 @@ function isInteractive(target: EventTarget | null): boolean {
 export function LessonCard({
   lesson,
   index,
+  width,
   selected,
   quality,
   onToggle,
@@ -26,6 +27,8 @@ export function LessonCard({
 }: {
   lesson: CatalogItem
   index: number
+  /** The card's width in pixels, derived from the strip height so the poster is not cropped. */
+  width?: number
   selected: boolean
   /** The on-disk quality label, e.g. `1080p`; absent means not downloaded. */
   quality?: string
@@ -42,6 +45,7 @@ export function LessonCard({
     <motion.li
       layout={!reduce}
       transition={reduce ? { duration: 0 } : { type: "spring", stiffness: 420, damping: 40, mass: 0.7 }}
+      style={width ? { width } : undefined}
       data-lesson={lesson.id}
       data-selected={selected ? "1" : undefined}
       data-on-disk={quality ? "1" : undefined}

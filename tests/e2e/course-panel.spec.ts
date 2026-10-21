@@ -152,6 +152,36 @@ test.describe("course panel", () => {
     await expect(first.locator("button[aria-pressed]")).toHaveCount(1)
   })
 
+  test("keeps the course metadata in the strip's first card and never crops a poster", async ({
+    page,
+    request,
+  }) => {
+    await page.setViewportSize({ width: 1440, height: 900 })
+    const { card } = await openCourse(page, request)
+    await card.locator("h3 button").click()
+
+    const panel = panelOf(page)
+    await expect(panel.locator("[data-course-info]")).toBeVisible()
+    await expect(panel.locator("[data-course-info]")).toContainText(/on disk/)
+
+    const posters = panel.locator("ol > li [data-poster]")
+    const count = await posters.count()
+    expect(count).toBeGreaterThan(0)
+    for (let index = 0; index < count; index += 1) {
+      const box = await posters.nth(index).boundingBox()
+      expect(box).not.toBeNull()
+      expect((box?.width ?? 0) / (box?.height ?? 1)).toBeGreaterThanOrEqual(16 / 9 - 0.03)
+    }
+
+    const scroller = panel.locator("ol").locator("..")
+    await expect(scroller).toHaveCSS("overflow-x", "auto")
+    const heightGap = async () =>
+      Math.abs(
+        Math.round((await panel.boundingBox())?.height ?? 0) - Math.round((await card.boundingBox())?.height ?? 0),
+      )
+    await expect.poll(heightGap).toBeLessThanOrEqual(1)
+  })
+
   test("clicking a lesson card selects it instead of previewing it", async ({ page, request }) => {
     const { card } = await openCourse(page, request)
     await card.locator("h3 button").click()

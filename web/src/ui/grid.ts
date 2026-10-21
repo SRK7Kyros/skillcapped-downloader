@@ -7,10 +7,23 @@ export function useGridColumns(ref: RefObject<HTMLElement | null>): number {
   useEffect(() => {
     const node = ref.current
     if (!node) return
-    const read = () => {
-      const tracks = getComputedStyle(node).gridTemplateColumns.split(" ").filter(Boolean)
-      setColumns(tracks.length || 1)
+
+    // An empty clone cannot introduce implicit tracks the way an open panel does,
+    // so its template is the count the CSS breakpoints actually ask for.
+    const trackCount = () => {
+      const probe = node.cloneNode(false) as HTMLElement
+      probe.style.position = "absolute"
+      probe.style.visibility = "hidden"
+      probe.style.pointerEvents = "none"
+      probe.style.width = `${node.clientWidth}px`
+      probe.setAttribute("aria-hidden", "true")
+      node.parentElement?.appendChild(probe)
+      const tracks = getComputedStyle(probe).gridTemplateColumns.split(" ").filter(Boolean).length
+      probe.remove()
+      return tracks || 1
     }
+
+    const read = () => setColumns(trackCount())
     read()
     const observer = new ResizeObserver(read)
     observer.observe(node)

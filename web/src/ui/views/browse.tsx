@@ -15,6 +15,8 @@ import { useEscape, useSelection } from "../store"
 
 const PAGE_SIZE = 60
 const QUALITY_RANK: Record<string, number> = { "720p": 1, "1080p": 2, "4K": 3 }
+/** Tracks the panel needs to show its own card plus one full lesson card beside the open one. */
+const PANEL_MIN_TRACKS = 3
 
 function searchText(item: CatalogItem): string {
   return [item.title, item.category, item.role, item.staff, item.champions, item.courseTitle, ...(item.tags ?? [])]
@@ -205,7 +207,7 @@ export function BrowseView({
   const room = openColumn > 0 ? columns - openColumn : 0
   const halfTheGrid = Math.max(2, Math.round(columns / 2))
   const panelSpan = Math.min(room, halfTheGrid)
-  const beside = panelSpan >= 2
+  const beside = panelSpan >= PANEL_MIN_TRACKS
   const placement: CSSProperties | null =
     openIndex < 0
       ? null
