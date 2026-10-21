@@ -1,7 +1,7 @@
-import { useMemo } from "react"
+import { useMemo, useState } from "react"
 import type { JobRecord, JobStatus, Quality, ToolInfo } from "../../api/types"
 import { formatBytes, formatEta, formatSpeed, roleVar } from "../../lib/format"
-import { courseProgressByGroup, itemPercent, type CourseProgress } from "../../lib/progress"
+import { groupQueue, itemPercent, queueProgress, type QueueGroup } from "../../lib/progress"
 import { Icon, type IconName } from "../icons"
 import { Badge, Button, IconButton, ProgressBar, Tooltip, cx } from "../primitives"
 
@@ -17,7 +17,6 @@ const STATUS_META: Record<JobStatus, { label: string; tone: "neutral" | "brand" 
 }
 
 const ACTIVE: JobStatus[] = ["queued", "resolving", "downloading", "remuxing"]
-const ATTENTION: JobStatus[] = ["failed", "interrupted", "cancelled"]
 
 export const isActive = (status: JobStatus) => ACTIVE.includes(status)
 
@@ -31,13 +30,11 @@ function estimateEta(job: JobRecord): number {
 
 function JobRow({
   job,
-  course,
   onCancel,
   onRetry,
   onRemove,
 }: {
   job: JobRecord
-  course: CourseProgress | null
   onCancel: (id: string) => void
   onRetry: (id: string) => void
   onRemove: (id: string) => void
@@ -83,9 +80,6 @@ function JobRow({
                   fell back
                 </span>
               </Tooltip>
-            ) : null}
-            {job.groupTitle ? (
-              <span className="truncate text-ink-faint">· {job.groupTitle}</span>
             ) : null}
           </div>
         </div>
@@ -134,18 +128,78 @@ function JobRow({
         </div>
       ) : null}
 
-      {course ? (
-        <div className="mt-2 space-y-0.5">
-          <ProgressBar value={course.percent} tone="muted" height={3} />
-          <div className="flex items-center justify-between gap-2 text-[9.5px] text-ink-faint tabular-nums">
-            <span className="truncate">course · {course.done}/{course.total} lessons</span>
-            <span>{Math.round(course.percent)}%</span>
-          </div>
-        </div>
-      ) : null}
-
       {job.error ? <p className="mt-1.5 text-[10.5px] leading-relaxed text-danger">{job.error}</p> : null}
       {job.note ? <p className="mt-1 text-[10px] leading-relaxed text-warning">{job.note}</p> : null}
+    </div>
+  )
+}
+
+const STATE_TONE: Record<QueueGroup["state"], "brand" | "warning" | "success"> = {
+  active: "brand",
+  attention: "warning",
+  finished: "success",
+}
+
+/**
+ * One course in the queue: a bar for the whole run that opens into its lessons.
+ * Collapsed by default — the header already names the lesson being fetched, so
+ * the per-item bars are a click away rather than filling the panel.
+ */
+function GroupCard({
+  group,
+  open,
+  onToggle,
+  onCancel,
+  onRetry,
+  onRemove,
+}: {
+  group: QueueGroup
+  open: boolean
+  onToggle: () => void
+  onCancel: (id: string) => void
+  onRetry: (id: string) => void
+  onRemove: (id: string) => void
+}) {
+  const active = group.jobs.filter((job) => job.status === "queued" ? false : isActive(job.status)).length
+
+  return (
+    <div className="rounded-[var(--r-md)] border border-line bg-surface-1">
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={onToggle}
+        className="tab-stop flex w-full items-start gap-2 p-2.5 pb-1.5 text-left"
+      >
+        <Icon name={open ? "chevron-down" : "chevron-right"} size={12} className="mt-1 shrink-0 text-ink-faint" />
+        <span className="min-w-0 flex-1">
+          <span className="flex items-baseline gap-2">
+            <span className="min-w-0 flex-1 truncate text-[11.5px] font-medium text-ink" title={group.title}>
+              {group.title}
+            </span>
+            <span className="shrink-0 font-mono text-[10px] text-ink-dim tabular-nums">{Math.round(group.percent)}%</span>
+          </span>
+          <span className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[10px] text-ink-dim">
+            <span>
+              {group.done}/{group.total} lessons
+            </span>
+            {active ? <span className="text-brand">{active} downloading</span> : null}
+            {group.failed ? <span className="text-warning">{group.failed} failed</span> : null}
+            {group.state === "active" ? <span className="min-w-0 truncate text-ink-faint">· {group.lead.title}</span> : null}
+          </span>
+        </span>
+      </button>
+
+      <div className="px-2.5 pb-2 pl-[26px]">
+        <ProgressBar value={group.percent} tone={STATE_TONE[group.state]} height={3} />
+      </div>
+
+      {open ? (
+        <div className="space-y-2 border-t border-line p-2">
+          {group.jobs.map((job) => (
+            <JobRow key={job.id} job={job} onCancel={onCancel} onRetry={onRetry} onRemove={onRemove} />
+          ))}
+        </div>
+      ) : null}
     </div>
   )
 }
@@ -173,12 +227,17 @@ export function DownloadsPanel({
   onOpenFolder: () => void
   onClose: () => void
 }) {
-  const running = jobs.filter((job) => isActive(job.status))
-  const attention = jobs.filter((job) => ATTENTION.includes(job.status))
-  const finished = jobs.filter((job) => job.status === "done")
-  const bytes = jobs.reduce((total, job) => total + (job.sizeBytes ?? 0), 0)
   const qualityLabel = qualities.find((option) => option.id === defaults.quality)?.label ?? "—"
-  const courses = useMemo(() => courseProgressByGroup(jobs), [jobs])
+  const queue = useMemo(() => queueProgress(jobs), [jobs])
+  const groups = useMemo(() => groupQueue(jobs), [jobs])
+  const [openGroups, setOpenGroups] = useState<string[]>([])
+  const toggleGroup = (key: string) =>
+    setOpenGroups((keys) => (keys.includes(key) ? keys.filter((open) => open !== key) : [...keys, key]))
+  const sections = [
+    { key: "active", label: "In progress", groups: groups.filter((group) => group.state === "active") },
+    { key: "attention", label: "Needs attention", groups: groups.filter((group) => group.state === "attention") },
+    { key: "finished", label: "Finished", groups: groups.filter((group) => group.state === "finished") },
+  ]
 
   if (!jobs.length) {
     return (
@@ -197,16 +256,33 @@ export function DownloadsPanel({
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-[var(--r-sm)] border border-line bg-canvas px-2.5 py-2 text-[10.5px] text-ink-dim">
-        <span className="inline-flex items-center gap-1">
-          <span className={cx("h-1.5 w-1.5 rounded-full", running.length ? "animate-[pulse_1.4s_ease-in-out_infinite] bg-brand" : "bg-ink-faint")} />
-          {running.length} active
-        </span>
-        <span>{finished.length} done</span>
-        {attention.length ? <span className="text-warning">{attention.length} need attention</span> : null}
-        <span className="tabular-nums">{formatBytes(bytes)} on disk</span>
-        <span className="ml-auto font-mono">{qualityLabel} · {defaults.concurrency} at a time</span>
-      </div>
+      <section className="space-y-1.5 rounded-[var(--r-md)] border border-line bg-surface-1 p-2.5">
+        <div className="flex items-baseline justify-between gap-2">
+          <p className="text-[10px] font-semibold tracking-[0.08em] text-ink-dim uppercase">Queue progress</p>
+          <span className="font-mono text-[12px] font-medium text-ink tabular-nums">{Math.round(queue.percent)}%</span>
+        </div>
+        <ProgressBar value={queue.percent} height={6} />
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[10.5px] text-ink-dim tabular-nums">
+          <span className="font-medium text-ink">
+            {queue.done} of {queue.total} downloads
+          </span>
+          {queue.active ? (
+            <span className="inline-flex items-center gap-1">
+              <span className="h-1.5 w-1.5 animate-[pulse_1.4s_ease-in-out_infinite] rounded-full bg-brand" />
+              {queue.active} active
+            </span>
+          ) : null}
+          {queue.attention ? <span className="text-warning">{queue.attention} need attention</span> : null}
+          {queue.speed > 0 ? <span>{formatSpeed(queue.speed)}</span> : null}
+          {queue.eta > 0 ? <span>ETA {formatEta(queue.eta)}</span> : null}
+          <span className="ml-auto inline-flex items-center gap-2">
+            <span>{formatBytes(queue.bytes)} on disk</span>
+            <span className="font-mono">
+              {qualityLabel} · {defaults.concurrency} at a time
+            </span>
+          </span>
+        </div>
+      </section>
 
       {!tools.ffmpeg ? (
         <p className="flex items-start gap-1.5 rounded-[var(--r-sm)] border border-warning/40 bg-warning-dim px-2.5 py-2 text-[10.5px] leading-relaxed text-warning">
@@ -216,53 +292,34 @@ export function DownloadsPanel({
         </p>
       ) : null}
 
-      {running.length ? (
-        <section className="space-y-2">
-          <h3 className="text-[10px] font-semibold tracking-[0.08em] text-ink-dim uppercase">In progress</h3>
-          {running.map((job) => (
-            <JobRow
-              key={job.id}
-              job={job}
-              course={job.groupId ? (courses.get(job.groupId) ?? null) : null}
-              onCancel={onCancel}
-              onRetry={onRetry}
-              onRemove={onRemove}
-            />
-          ))}
-        </section>
-      ) : null}
-
-      {attention.length ? (
-        <section className="space-y-2">
-          <h3 className="text-[10px] font-semibold tracking-[0.08em] text-ink-dim uppercase">Needs attention</h3>
-          {attention.map((job) => (
-            <JobRow
-              key={job.id}
-              job={job}
-              course={job.groupId ? (courses.get(job.groupId) ?? null) : null}
-              onCancel={onCancel}
-              onRetry={onRetry}
-              onRemove={onRemove}
-            />
-          ))}
-        </section>
-      ) : null}
-
-      {finished.length ? (
-        <section className="space-y-2">
-          <h3 className="text-[10px] font-semibold tracking-[0.08em] text-ink-dim uppercase">Finished</h3>
-          {finished.map((job) => (
-            <JobRow
-              key={job.id}
-              job={job}
-              course={job.groupId ? (courses.get(job.groupId) ?? null) : null}
-              onCancel={onCancel}
-              onRetry={onRetry}
-              onRemove={onRemove}
-            />
-          ))}
-        </section>
-      ) : null}
+      {sections.map((section) =>
+        section.groups.length ? (
+          <section key={section.key} className="space-y-2">
+            <h3 className="text-[10px] font-semibold tracking-[0.08em] text-ink-dim uppercase">{section.label}</h3>
+            {section.groups.map((group) =>
+              group.kind === "single" ? (
+                <JobRow
+                  key={group.key}
+                  job={group.jobs[0]}
+                  onCancel={onCancel}
+                  onRetry={onRetry}
+                  onRemove={onRemove}
+                />
+              ) : (
+                <GroupCard
+                  key={group.key}
+                  group={group}
+                  open={openGroups.includes(group.key)}
+                  onToggle={() => toggleGroup(group.key)}
+                  onCancel={onCancel}
+                  onRetry={onRetry}
+                  onRemove={onRemove}
+                />
+              ),
+            )}
+          </section>
+        ) : null,
+      )}
 
       <div className="flex flex-wrap items-center gap-2 pt-1">
         <Button size="sm" icon="folder" variant="secondary" onClick={onOpenFolder} className="flex-1">
@@ -272,7 +329,7 @@ export function DownloadsPanel({
           size="sm"
           icon="trash"
           variant="ghost"
-          disabled={!finished.length && !attention.length}
+          disabled={!queue.done && !queue.attention}
           onClick={onClearFinished}
         >
           Clear finished

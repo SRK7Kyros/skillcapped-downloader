@@ -82,10 +82,14 @@ in a Firestore document, so the catalogue is discovered — not hardcoded:
 The UI's preview player consumes a playlist the server synthesises from the same
 segment scheme, which makes it a live check that the download path is correct.
 
-Every queued lesson reports two bars: its own part-by-part progress and, when a
-whole course was queued, the course's progress in the same row
-(`course · 7/12 lessons`). Lessons are grouped by the catalogue's course id, so a
-bulk run reads as one course rather than a dozen unrelated downloads.
+The downloads panel reads as a queue, not a feed. One bar covers the whole queue
+(every item counted by its own percentage, with the aggregate speed and the
+bytes still to fetch turned into a single ETA), then the queue is split into
+courses: a course is one collapsible line with its own bar, its lesson tally and
+the name of the lesson currently downloading, and opening it shows each lesson's
+part-by-part progress and its own controls. Downloads that belong to no course
+stay one line each. Courses are grouped by the catalogue's course id, so a bulk
+run reads as one thing rather than a dozen unrelated downloads.
 
 Jobs persist across restarts (`content/.skillcapped/jobs.json`); a job that was
 mid-flight when the app closed is marked `interrupted` and can be retried. The
