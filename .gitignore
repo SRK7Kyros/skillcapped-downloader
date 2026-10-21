@@ -13,3 +13,6 @@ playwright-report/
 # Bundle a real ffmpeg here to ship one with the executable (see README).
 bin/*
 !bin/.gitkeep
+
+# iOS — XcodeGen generates the project from ios/project.yml
+ios/SkillCappedLocal.xcodeproj/

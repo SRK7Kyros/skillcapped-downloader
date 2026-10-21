@@ -1,0 +1,112 @@
+name: iOS
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Marketing version baked into the IPA
+        required: false
+        default: "1.0.0"
+  push:
+    paths:
+      - "ios/**"
+      - ".github/workflows/ios.yml"
+
+concurrency:
+  group: ios-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve version
+        id: version
+        run: echo "version=${{ inputs.version || '1.0.0' }}" >> "$GITHUB_OUTPUT"
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate the Xcode project
+        working-directory: ios
+        run: xcodegen generate
+
+      - name: Pick an available iPhone simulator
+        id: sim
+        run: |
+          DEVICE=$(xcrun simctl list devices available -j | python3 -c '
+          import json, sys
+          data = json.load(sys.stdin)["devices"]
+          for runtime in sorted(data, reverse=True):
+              if "iOS" not in runtime:
+                  continue
+              for device in data[runtime]:
+                  if device.get("name", "").startswith("iPhone"):
+                      print(device["name"])
+                      raise SystemExit
+          ')
+          echo "device=$DEVICE" >> "$GITHUB_OUTPUT"
+          echo "Testing on $DEVICE"
+
+      - name: Unit and UI tests
+        working-directory: ios
+        run: |
+          set +e
+          xcodebuild test -quiet \
+            -project SkillCappedLocal.xcodeproj \
+            -scheme SkillCappedLocal \
+            -destination "platform=iOS Simulator,name=${{ steps.sim.outputs.device }}" \
+            -resultBundlePath "$RUNNER_TEMP/tests.xcresult" \
+            > "$RUNNER_TEMP/tests.log" 2>&1
+          STATUS=$?
+          grep -E "error:|warning:|Test Suite|Test Case|\*\* TEST" "$RUNNER_TEMP/tests.log" | tail -200
+          if [ $STATUS -ne 0 ]; then
+            echo "--- last 120 lines ---"
+            tail -120 "$RUNNER_TEMP/tests.log"
+          fi
+          exit $STATUS
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: SkillCappedLocal-tests
+          path: ${{ runner.temp }}/tests.xcresult
+          if-no-files-found: ignore
+
+      - name: Build the unsigned app
+        working-directory: ios
+        run: |
+          set -o pipefail
+          xcodebuild build -quiet \
+            -project SkillCappedLocal.xcodeproj \
+            -scheme SkillCappedLocal \
+            -configuration Release \
+            -destination "generic/platform=iOS" \
+            -derivedDataPath ../build/dd \
+            MARKETING_VERSION="${{ steps.version.outputs.version }}" \
+            CURRENT_PROJECT_VERSION="${{ github.run_number }}" \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            CODE_SIGN_ENTITLEMENTS=""
+
+      - name: Package the IPA
+        run: |
+          set -euo pipefail
+          APP=$(find build/dd/Build/Products/Release-iphoneos -maxdepth 1 -name "*.app" -print -quit)
+          test -n "$APP"
+          rm -rf build/Payload build/SkillCappedLocal.ipa
+          mkdir -p build/Payload
+          cp -R "$APP" build/Payload/
+          cd build
+          zip -qry SkillCappedLocal.ipa Payload
+          unzip -l SkillCappedLocal.ipa | head -20
+
+      - name: Upload the IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: SkillCappedLocal-${{ steps.version.outputs.version }}-${{ github.run_number }}
+          path: build/SkillCappedLocal.ipa
+          if-no-files-found: error
