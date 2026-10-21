@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react"
+import { useMemo, useState, type ReactNode } from "react"
 import { motion, useReducedMotion } from "motion/react"
 import type { CatalogItem } from "../../api/types"
 import { formatCount, formatDate, formatDuration, roleLabel, roleShort, roleVar } from "../../lib/format"
@@ -62,18 +62,23 @@ export function ItemCard({
   open,
   attached,
   downloaded,
+  openDetails,
   onToggle,
   onPreview,
   onOpen,
+  onClose,
 }: {
   item: CatalogItem
   selected: boolean
   open: boolean
   attached?: boolean
   downloaded: DownloadedState | null
+  /** Rendered under the card's footer while it is open — the course's own actions. */
+  openDetails?: ReactNode
   onToggle: (id: string, additive: boolean) => void
   onPreview: (item: CatalogItem) => void
   onOpen: (item: CatalogItem) => void
+  onClose?: () => void
 }) {
   const [brokenThumb, setBrokenThumb] = useState(false)
   const [ratio, setRatio] = useState<string | null>(null)
@@ -240,13 +245,31 @@ export function ItemCard({
           ) : item.kind === "video" ? (
             <span className="font-mono tabular-nums">{formatCount(item.durationSec)}s</span>
           ) : expandable ? (
-            <span className="flex items-center gap-0.5 text-ink-dim">
-              Lessons
-              <Icon name="chevron-right" size={10} />
-            </span>
+            open ? (
+              <button
+                type="button"
+                aria-label="Close lessons"
+                aria-expanded={open}
+                onClick={(event) => {
+                  event.stopPropagation()
+                  onClose?.()
+                }}
+                className="flex items-center gap-0.5 text-ink-dim transition-colors duration-[var(--dur-fast)] tab-stop hover:text-ink"
+              >
+                Close
+                <Icon name="x" size={10} />
+              </button>
+            ) : (
+              <span className="flex items-center gap-0.5 text-ink-dim">
+                Lessons
+                <Icon name="chevron-right" size={10} />
+              </span>
+            )
           ) : null}
         </div>
       </div>
+
+      {open && openDetails ? openDetails : null}
     </motion.article>
   )
 }

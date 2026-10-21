@@ -1,4 +1,4 @@
-import { expect, test, type APIRequestContext, type Page } from "@playwright/test"
+import { expect, test, type APIRequestContext, type Locator, type Page } from "@playwright/test"
 
 type Item = {
   id: string
@@ -38,6 +38,8 @@ async function openCourse(page: Page, request: APIRequestContext, min = 2, max =
 
 const panelOf = (page: Page) => page.locator("[data-course-panel]")
 
+const detailsOf = (card: Locator) => card.locator("[data-course-details]")
+
 const libraryPayload = (uuids: string[]) => ({
   count: uuids.length,
   totalBytes: uuids.length * 1024,
@@ -62,9 +64,14 @@ test.describe("course panel", () => {
     await card.locator("h3 button").click()
     const panel = panelOf(page)
     await expect(panel).toBeVisible()
-    await expect(panel).toContainText(course.title)
+    await expect(panel).toHaveAttribute("aria-label", `${course.title} lessons`)
     await expect(panel.locator("ol > li")).toHaveCount(lessons.length)
     await expect(panel.locator("ol > li").first()).toContainText(lessons[0].title)
+
+    const details = detailsOf(card)
+    await expect(details).toBeVisible()
+    await expect(details).toContainText(/on disk/)
+    await expect(panel.locator("[data-course-details]")).toHaveCount(0)
 
     await expect(card).toHaveAttribute("data-open", "1")
     await expect(card).not.toHaveAttribute("data-selected", "1")
@@ -73,6 +80,7 @@ test.describe("course panel", () => {
     await page.keyboard.press("Escape")
     await expect(panel).toHaveCount(0)
     await expect(card).not.toHaveAttribute("data-open", "1")
+    await expect(card.locator("[data-course-details]")).toHaveCount(0)
   })
 
   test("opens beside the card and takes the room its lessons need", async ({ page, request }) => {
@@ -86,11 +94,11 @@ test.describe("course panel", () => {
     const panel = panelOf(page)
     await expect(panel).toBeVisible()
 
-    const card = await opened.boundingBox()
-    expect(card).not.toBeNull()
+    const cardBox = async () => opened.boundingBox()
 
     const edgeOffset = async () => {
       const box = await panel.boundingBox()
+      const card = await cardBox()
       if (!box || !card) return 999
       return Math.round(Math.max(Math.abs(box.x - (card.x + card.width)), Math.abs(box.y - card.y)))
     }
@@ -98,6 +106,7 @@ test.describe("course panel", () => {
 
     const panelVsCard = async () => {
       const box = await panel.boundingBox()
+      const card = await cardBox()
       if (!box || !card) return 999
       return Math.abs(Math.round(box.height) - Math.round(card.height))
     }
@@ -114,8 +123,12 @@ test.describe("course panel", () => {
     await expect.poll(slackAtRight).toBeLessThanOrEqual(1)
 
     const rowOf = async (index: number) => Math.round((await cards.nth(index).boundingBox())?.y ?? 0)
-    await expect.poll(() => rowOf(1)).toBe(Math.round((card?.y ?? 0) + (card?.height ?? 0) + 10))
-    await expect.poll(() => rowOf(2)).toBe(Math.round((card?.y ?? 0) + (card?.height ?? 0) + 10))
+    const belowOpen = async () => {
+      const card = await cardBox()
+      return card ? Math.round(card.y + card.height + 10) : 0
+    }
+    await expect.poll(async () => (await rowOf(1)) - (await belowOpen())).toBe(0)
+    await expect.poll(async () => (await rowOf(2)) - (await belowOpen())).toBe(0)
 
     await page.getByRole("button", { name: "Close lessons" }).click()
     await expect(panel).toHaveCount(0)
@@ -150,7 +163,7 @@ test.describe("course panel", () => {
 
     await card.locator("h3 button").click()
     const panel = panelOf(page)
-    await expect(panel).toContainText(`1 of ${lessons.length} on disk`)
+    await expect(detailsOf(card)).toContainText(`1 of ${lessons.length} on disk`)
     await expect(panel.locator("ol > li").first()).toContainText("1080p")
     await expect(panel.locator("ol > li").nth(1)).not.toContainText("1080p")
 
@@ -179,7 +192,7 @@ test.describe("course panel", () => {
     await expect(first.locator("button[aria-pressed]")).toHaveCount(1)
   })
 
-  test("keeps the course metadata in the strip's first card and never crops a poster", async ({
+  test("keeps the course metadata in the banner card and never crops a poster", async ({
     page,
     request,
   }) => {
@@ -188,8 +201,10 @@ test.describe("course panel", () => {
     await card.locator("h3 button").click()
 
     const panel = panelOf(page)
-    await expect(panel.locator("[data-course-info]")).toBeVisible()
-    await expect(panel.locator("[data-course-info]")).toContainText(/on disk/)
+    const details = detailsOf(card)
+    await expect(details).toBeVisible()
+    await expect(details).toContainText(/on disk/)
+    await expect(panel.locator("[data-course-details]")).toHaveCount(0)
 
     const posters = panel.locator("ol > li [data-poster]")
     const count = await posters.count()
@@ -214,6 +229,7 @@ test.describe("course panel", () => {
     await card.locator("h3 button").click()
 
     const panel = panelOf(page)
+    const details = detailsOf(card)
     const first = panel.locator("ol > li").first()
     await expect(first).toBeVisible()
 
@@ -221,27 +237,27 @@ test.describe("course panel", () => {
     // preview button used to sit dead centre and swallow it.
     await first.click()
     await expect(first).toHaveAttribute("data-selected", "1")
-    await expect(panel).toContainText("1 selected")
+    await expect(details).toContainText("1 selected")
     await expect(page.getByRole("dialog")).toHaveCount(0)
 
     await first.click()
     await expect(first).not.toHaveAttribute("data-selected", "1")
-    await expect(panel).toContainText("0 selected")
+    await expect(details).toContainText("0 selected")
   })
 
-  test("selects the whole course from the panel", async ({ page, request }) => {
+  test("selects the whole course from the banner card", async ({ page, request }) => {
     const { lessons, card } = await openCourse(page, request)
     await card.locator("h3 button").click()
 
-    const panel = panelOf(page)
-    await expect(panel).toContainText("0 selected")
-    await panel.getByRole("button", { name: "Select all" }).click()
-    await expect(panel).toContainText(`${lessons.length} selected`)
-    await expect(panel.getByRole("button", { name: /^Download \d+ selected$/ })).toBeVisible()
+    const details = detailsOf(card)
+    await expect(details).toContainText("0 selected")
+    await details.getByRole("button", { name: "Select all" }).click()
+    await expect(details).toContainText(`${lessons.length} selected`)
+    await expect(details.getByRole("button", { name: /^Download \d+ selected$/ })).toBeVisible()
 
     await expect(card).not.toHaveAttribute("data-selected", "1")
-    await panel.getByRole("button", { name: "Clear" }).click()
-    await expect(panel).toContainText("0 selected")
+    await details.getByRole("button", { name: "Clear" }).click()
+    await expect(details).toContainText("0 selected")
   })
 
   test("ctrl-clicking a lesson selects only that lesson", async ({ page, request }) => {
@@ -249,15 +265,16 @@ test.describe("course panel", () => {
     await card.locator("h3 button").click()
 
     const panel = panelOf(page)
+    const details = detailsOf(card)
     const rows = panel.locator("ol > li")
     await expect(rows.first()).toBeVisible()
 
     await rows.nth(0).locator("button[aria-pressed]").click({ modifiers: ["Control"] })
     await expect(rows.nth(0).locator("button[aria-pressed]")).toHaveAttribute("aria-pressed", "true")
-    await expect(panel).toContainText("1 selected")
+    await expect(details).toContainText("1 selected")
 
     await rows.nth(lessons.length - 1).locator("button[aria-pressed]").click({ modifiers: ["Control"] })
-    await expect(panel).toContainText("2 selected")
+    await expect(details).toContainText("2 selected")
     await expect(panel.locator("ol > li button[aria-pressed='true']")).toHaveCount(2)
   })
 

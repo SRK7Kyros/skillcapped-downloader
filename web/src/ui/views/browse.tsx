@@ -3,10 +3,11 @@ import { AnimatePresence } from "motion/react"
 import type { CatalogItem, CatalogResponse, LibraryResponse, Meta } from "../../api/types"
 import { useStartDownloads } from "../../api/hooks"
 import { courseLessons } from "../../lib/course"
-import { panelGeometry, panelTracks } from "../../lib/panel"
+import { panelGeometry, panelTracks, stripHeightFor } from "../../lib/panel"
 import { rankItems } from "../../lib/search"
 import { ItemCard, isDownloadable, type DownloadedState } from "../components/item-card"
 import { BrowseToolbar, type KindFilter, type SortMode } from "../components/browse-toolbar"
+import { CourseDetails } from "../components/course-details"
 import { CoursePanel } from "../components/course-panel"
 import { PreviewPlayer } from "../components/player"
 import { SelectionBar } from "../components/selection-bar"
@@ -16,8 +17,8 @@ import { useEscape, useSelection } from "../store"
 
 const PAGE_SIZE = 60
 const QUALITY_RANK: Record<string, number> = { "720p": 1, "1080p": 2, "4K": 3 }
-/** Tracks the panel needs to show its own card plus one full lesson card beside the open one. */
-const PANEL_MIN_TRACKS = 3
+/** Tracks the panel needs beside its card: one lesson card plus its padding. */
+const PANEL_MIN_TRACKS = 2
 
 function searchText(item: CatalogItem): string {
   return [item.title, item.category, item.role, item.staff, item.champions, item.courseTitle, ...(item.tags ?? [])]
@@ -207,11 +208,12 @@ export function BrowseView({
   const openColumn = openIndex >= 0 ? (openIndex % columns) + 1 : 0
   const openRow = openIndex >= 0 ? Math.floor(openIndex / columns) + 1 : 0
   const room = openColumn > 0 ? columns - openColumn : 0
-  // The panel is as wide as its cards ask for, never wider than the room left in
-  // the row — a long course takes the rest of the row and scrolls inside it.
-  const openGeometry = panelGeometry(openCardHeight, openLessons.length)
-  const panelSpan = panelTracks(openGeometry.contentWidth, track, gap, PANEL_MIN_TRACKS, room)
-  const beside = panelSpan >= PANEL_MIN_TRACKS
+  const beside = room >= PANEL_MIN_TRACKS
+  // The strip is as wide as its lesson cards ask for, never wider than the room
+  // left in the row — a long course takes the rest of the row and scrolls.
+  const openStrip = stripHeightFor(openCardHeight, beside)
+  const openGeometry = panelGeometry(openStrip, openLessons.length)
+  const panelSpan = beside ? panelTracks(openGeometry.contentWidth, track, gap, PANEL_MIN_TRACKS, room) : 0
   const placement: CSSProperties | null =
     openIndex < 0
       ? null
@@ -301,9 +303,27 @@ export function BrowseView({
                 open={item.id === openCourseId}
                 attached={item.id === openCourseId && beside}
                 downloaded={downloadedLabel(item)}
+                openDetails={
+                  openCourse && item.id === openCourse.id ? (
+                    <CourseDetails
+                      course={openCourse}
+                      lessons={openLessons}
+                      downloaded={downloadedByUuid}
+                      selectedIds={openLessons.filter((lesson) => isSelected(lesson.id)).map((lesson) => lesson.id)}
+                      onSelectAll={() => selectMany(openLessons.filter(isDownloadable).map((lesson) => lesson.id))}
+                      onClear={() => selectMany(openLessons.map((lesson) => lesson.id), "remove")}
+                      onDownload={(ids) => {
+                        setOpenCourseId(null)
+                        queueSelection(ids)
+                      }}
+                      busy={startDownloads.isPending}
+                    />
+                  ) : undefined
+                }
                 onToggle={handleToggle}
                 onPreview={setPreview}
                 onOpen={handleOpenCourse}
+                onClose={() => setOpenCourseId(null)}
               />
             ))}
 
@@ -314,18 +334,9 @@ export function BrowseView({
                   course={openCourse}
                   lessons={openLessons}
                   downloaded={downloadedByUuid}
-                  selectedCount={openLessons.filter((lesson) => isSelected(lesson.id)).length}
                   isSelected={isSelected}
                   onToggleLesson={handleToggleLesson}
-                  onSelectAll={() => selectMany(openLessons.filter(isDownloadable).map((lesson) => lesson.id))}
-                  onClear={() => selectMany(openLessons.map((lesson) => lesson.id), "remove")}
                   onPreview={setPreview}
-                  onDownload={(ids) => {
-                    setOpenCourseId(null)
-                    queueSelection(ids)
-                  }}
-                  onClose={() => setOpenCourseId(null)}
-                  busy={startDownloads.isPending}
                   placement={placement}
                   height={openCardHeight}
                   attached={beside}
