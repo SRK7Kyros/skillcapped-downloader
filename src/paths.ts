@@ -9,11 +9,20 @@ import path from "node:path"
 import type { Flags } from "./flags.ts"
 
 /**
- * True when running as a compiled executable. Bun mounts an embedded VFS at
- * `/$bunfs`, so `import.meta.dir` points inside it instead of a real folder.
+ * True when `dir` is Bun's embedded filesystem rather than a real folder.
+ * POSIX mounts it at `/$bunfs/root`; Windows mounts it on a virtual drive at
+ * `B:\~BUN\root`. Checking only the POSIX form made a Windows build believe it
+ * was running from source, so `appDir()` resolved inside the VFS and the first
+ * `mkdir(content/.skillcapped/tmp)` died with `EPERM: mkdir '\'`.
  */
+export function isEmbeddedDir(dir: string): boolean {
+  const normalised = dir.replace(/\\/g, "/")
+  return /^\/\$bunfs(\/|$)/i.test(normalised) || /^[a-z]:\/~bun(\/|$)/i.test(normalised)
+}
+
+/** True when running as a compiled executable: `import.meta.dir` points inside the VFS. */
 export function isStandalone(): boolean {
-  return (import.meta.dir ?? "").startsWith("/$bunfs")
+  return isEmbeddedDir(import.meta.dir ?? "")
 }
 
 /** The folder the app "lives" in: beside the exe when compiled, repo root in dev. */
