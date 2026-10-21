@@ -1,0 +1,5 @@
+# Every tracked text file uses LF in the working tree, on every platform.
+# Without this, a Windows checkout with core.autocrlf=true rewrites tracked
+# files to CRLF, which shows up as a modification of src/server/web.html and
+# makes `git pull` refuse to merge.
+* text=auto eol=lf

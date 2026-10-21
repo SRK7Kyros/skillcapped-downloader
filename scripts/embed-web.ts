@@ -5,6 +5,10 @@
  * only checks the result is a plausible document — scanning for `src="../..` is
  * useless because the inlined JavaScript legitimately contains script-tag
  * strings of its own.
+ *
+ * Line endings are normalised to LF because the embedded copy is committed: a
+ * Windows checkout can hand us CRLF, and a build there would otherwise write a
+ * file whose every line differs from the committed one.
  */
 
 import { mkdir } from "node:fs/promises"
@@ -20,7 +24,7 @@ if (!(await source.exists())) {
   process.exit(1)
 }
 
-const html = await source.text()
+const html = (await source.text()).replace(/\r\n/g, "\n")
 const problems: string[] = []
 if (!html.includes('<div id="root">')) problems.push("no #root mount point")
 if (!html.includes("<style>")) problems.push("no inlined stylesheet")

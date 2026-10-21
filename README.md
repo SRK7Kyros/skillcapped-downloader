@@ -148,4 +148,7 @@ The UI is React 19 + Vite + Tailwind v4 + Radix, and the design language is shar
 with [mirrorr](https://github.com/SRK7Kyros/mirrorr): the same token file drives
 it, and `content/.skillcapped/` holds the cache, scratch space and job list. The
 whole UI compiles into one HTML document that is embedded in the binary, so the
-executable has no sidecar assets at all.
+executable has no sidecar assets at all. That embedded copy
+(`src/server/web.html`) is committed, and the repo is LF-only (`.gitattributes`),
+so a Windows checkout cannot regenerate it with CRLF line endings and leave the
+tree permanently dirty.
