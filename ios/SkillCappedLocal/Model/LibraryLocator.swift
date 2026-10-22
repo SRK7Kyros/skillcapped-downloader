@@ -22,8 +22,7 @@ enum LibraryLocator {
   /// a library — it has nothing to read.
   static func isLibrary(_ url: URL, manager: FileManager = .default) -> Bool {
     directoryChildren(of: url, manager: manager).contains { child in
-      buckets.contains(child.lastPathComponent.lowercased())
-        && !directoryChildren(of: child, manager: manager).isEmpty
+      buckets.contains(child.lastPathComponent.lowercased()) && hasVisibleEntries(child, manager: manager)
     }
   }
 
@@ -54,6 +53,11 @@ enum LibraryLocator {
     return children
       .filter { isDirectory($0, manager: manager) }
       .sorted { $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending }
+  }
+
+  private static func hasVisibleEntries(_ url: URL, manager: FileManager) -> Bool {
+    let entries = (try? manager.contentsOfDirectory(at: url, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles])) ?? []
+    return !entries.isEmpty
   }
 
   private static func isDirectory(_ url: URL, manager: FileManager) -> Bool {

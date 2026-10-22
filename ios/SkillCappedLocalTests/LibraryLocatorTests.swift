@@ -17,7 +17,7 @@ final class LibraryLocatorTests: XCTestCase {
   private func touch(_ relative: String) throws {
     let url = root.appendingPathComponent(relative)
     try manager.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-    manager.createFile(atPath: url.path, contents: Data())
+    _ = manager.createFile(atPath: url.path, contents: Data())
   }
 
   private func folder(_ relative: String) throws -> URL {
