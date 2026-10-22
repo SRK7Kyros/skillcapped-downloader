@@ -4,11 +4,10 @@ import SwiftUI
 ///
 /// The first choice is any folder at all — the system picker, so iCloud Drive, an
 /// external volume or another app's folder all work, read in place. Some builds
-/// cannot open that picker: it needs an iCloud container entitlement in the
-/// signing profile, and `FolderAccess` reports the refusal instead of letting the
-/// app die. For those, the sheet keeps listing the library folders already in the
-/// app's own Documents folder ("On My iPhone › SkillCapped Local") together with
-/// the copy-in steps.
+/// refuse to open that picker at all, and `FolderAccess` reports the refusal
+/// instead of letting the app die. For those, the sheet keeps listing the library
+/// folders already in the app's own Documents folder ("On My iPhone ›
+/// SkillCapped Local") together with the copy-in steps.
 struct LibraryLocationView: View {
   @EnvironmentObject private var store: LibraryStore
   @Environment(\.dismiss) private var dismiss
@@ -99,7 +98,7 @@ struct LibraryLocationView: View {
   }
 
   private func openPicker() {
-    switch FolderAccess.picker() {
+    switch FolderAccess.picker(startingAt: store.documentsURL) {
     case let .ready(controller):
       pickerNote = nil
       pickerRequest = FolderPickerRequest(controller: controller)

@@ -4,20 +4,18 @@ import UIKit
 /// The system folder picker, kept behind an Objective-C probe.
 ///
 /// `UIDocumentPickerViewController` raises an Objective-C exception from its
-/// initializer when the running signature carries no iCloud container
-/// entitlement — "Application initializing document picker is missing the
-/// iCloud entitlement" — and Swift cannot catch one. `Support/PickerProbe.m`
-/// makes the call instead, so a build that cannot open the picker reports why
-/// rather than dying, and a build whose profile does carry the entitlement
-/// (a paid certificate with iCloud enabled) gets the real thing.
+/// initializer and Swift cannot catch one, so the build lives in
+/// `Support/PickerProbe.m`: a build that cannot open the picker reports why
+/// instead of dying, and the probe tries the open-in-place spellings a device
+/// actually accepts before giving up.
 enum FolderAccess {
   enum Outcome {
     case ready(UIDocumentPickerViewController)
     case unavailable(String)
   }
 
-  static func picker() -> Outcome {
-    let result = SkillCappedFolderPickerResult.make()
+  static func picker(startingAt directory: URL?) -> Outcome {
+    let result = SkillCappedFolderPickerResult.makeStarting(at: directory)
     guard let controller = result.controller as? UIDocumentPickerViewController else {
       return .unavailable(explanation(result.reason))
     }

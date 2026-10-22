@@ -17,7 +17,12 @@ NS_ASSUME_NONNULL_BEGIN
 /// Why the picker is unavailable, straight from UIKit.
 @property (nonatomic, copy, nullable, readonly) NSString *reason;
 
+/// Ready to present, or `nil` when the picker is unavailable.
 + (instancetype)make;
+
+/// Same, browsing from `directory` rather than the default "Recents" root —
+/// which can keep Open disabled and gives the user nothing to select.
++ (instancetype)makeStartingAt:(nullable NSURL *)directory;
 
 @end
 
