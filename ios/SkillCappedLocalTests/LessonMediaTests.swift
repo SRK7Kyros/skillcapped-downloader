@@ -112,13 +112,12 @@ final class LessonMediaTests: XCTestCase {
   /// asset reports no tracks. Nothing ever read that list: it was inferred from a
   /// poster request that never returned, and the asset here is an ordinary
   /// `http://127.0.0.1` m3u8 — the resource-loader route was rejected precisely
-  /// because it reported a duration and never a frame — so the claim needs a
-  /// direct answer before the guard is treated as a platform limit.
+  /// because it reported a duration and never a frame — so the claim is worth
+  /// reading off our own asset instead of quoting docs.
   ///
   /// The assertion is only that the survey settles: a load that never answers is
   /// the failure worth pinning, because waiting on one once truncated a whole test
-  /// session. The finding is the printed `HLS_SURVEY` line, and the commit that
-  /// acts on it turns the answer into an assertion.
+  /// session. The finding is the printed `HLS_SURVEY` line.
   func testTheHLSAssetReportsWhatItExposes() async throws {
     let item = await LessonMedia.item(url: try fixture(), seconds: 3)
     let survey = await settle { await Self.survey(item) }
@@ -138,25 +137,26 @@ final class LessonMediaTests: XCTestCase {
 
     let asset = item.asset
     record("presentation", "\(Int(item.presentationSize.width))x\(Int(item.presentationSize.height))")
-    record("playable", ((try? await asset.load(.isPlayable)) ?? nil).map(String.init) ?? "unknown")
+    record("playable", (try? await asset.load(.isPlayable)).map { String(describing: $0) } ?? "unknown")
     record(
       "duration",
-      ((try? await asset.load(.duration)) ?? nil).map { String(format: "%.2fs", $0.seconds) } ?? "unknown"
+      (try? await asset.load(.duration)).map { String(format: "%.2fs", $0.seconds) } ?? "unknown"
     )
 
-    guard let tracks = (try? await asset.load(.tracks)) ?? nil else {
+    guard let tracks = try? await asset.load(.tracks) else {
       record("tracks", "unknown")
       return parts.joined(separator: " | ")
     }
     record("tracks", String(tracks.count))
 
     for (index, track) in tracks.enumerated() {
-      let type = (try? await track.load(.mediaType)) ?? nil
-      let size = (try? await track.load(.naturalSize)) ?? nil
-      let rate = (try? await track.load(.nominalFrameRate)) ?? nil
+      // `mediaType` is a plain property — AVAssetTrack has no async-loadable one.
+      let type = track.mediaType
+      let size = try? await track.load(.naturalSize)
+      let rate = try? await track.load(.nominalFrameRate)
       record(
         "track\(index)",
-        "\(type?.rawValue ?? "unknown") \(Int(size?.width ?? 0))x\(Int(size?.height ?? 0))"
+        "\(type) \(Int(size?.width ?? 0))x\(Int(size?.height ?? 0))"
           + " fps=\(rate.map { String(format: "%.1f", Double($0)) } ?? "-")"
       )
     }
