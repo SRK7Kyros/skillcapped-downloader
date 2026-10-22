@@ -7,6 +7,9 @@ struct PlayerScreen: View {
 
   @Environment(\.dismiss) private var dismiss
   @State private var player: AVPlayer?
+  @State private var waitingForCloud = false
+  @State private var failure: String?
+  @State private var preparing: Task<Void, Never>?
 
   var body: some View {
     ZStack {
@@ -15,9 +18,22 @@ struct PlayerScreen: View {
       if let player {
         VideoSurface(player: player)
           .ignoresSafeArea()
+      } else if let failure {
+        Text(failure)
+          .font(.subheadline)
+          .foregroundStyle(.white.opacity(0.85))
+          .multilineTextAlignment(.center)
+          .padding(28)
       } else {
-        ProgressView()
-          .tint(.white)
+        VStack(spacing: 10) {
+          ProgressView()
+            .tint(.white)
+          if waitingForCloud {
+            Text("Downloading from iCloud…")
+              .font(.footnote)
+              .foregroundStyle(.white.opacity(0.75))
+          }
+        }
       }
 
       VStack {
@@ -47,7 +63,30 @@ struct PlayerScreen: View {
     }
   }
 
+  /// A lesson in iCloud Drive may still be a placeholder, which `AVPlayer` cannot
+  /// open: ask iCloud for it and play as soon as the bytes land.
   private func start() {
+    guard player == nil, preparing == nil else { return }
+    guard CloudFile.needsDownload(lesson.url) else {
+      attach()
+      return
+    }
+    waitingForCloud = true
+    preparing = Task {
+      let ready = await CloudFile.waitUntilLocal(lesson.url)
+      await MainActor.run {
+        preparing = nil
+        waitingForCloud = false
+        if ready {
+          attach()
+        } else {
+          failure = "That lesson could not be downloaded from iCloud. Open it in Files once, then try again."
+        }
+      }
+    }
+  }
+
+  private func attach() {
     guard player == nil else { return }
     let item = AVPlayerItem(url: lesson.url)
     let player = AVPlayer(playerItem: item)
@@ -62,6 +101,8 @@ struct PlayerScreen: View {
   }
 
   private func stop() {
+    preparing?.cancel()
+    preparing = nil
     guard let player else { return }
     Playback.save(player.currentTime().seconds, for: lesson)
     player.pause()

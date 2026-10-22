@@ -11,6 +11,7 @@ struct SettingsView: View {
       Form {
         Section {
           LabeledContent("Name", value: store.rootName ?? "—")
+          LabeledContent("Source", value: store.isCloudRoot ? "iCloud Drive" : "On this device")
           if let path = store.scan?.rootPath {
             Text(path)
               .font(.caption2)
@@ -23,7 +24,7 @@ struct SettingsView: View {
         } header: {
           Text("Folder")
         } footer: {
-          Text("Library folders live in Files › On My iPhone › SkillCapped Local.")
+          Text("Any folder works — iCloud Drive, On My iPad, another app's folder — as does one inside Files › On My iPhone › SkillCapped Local.")
         }
 
         Section("Library") {
@@ -41,7 +42,7 @@ struct SettingsView: View {
 
         Section("About") {
           LabeledContent("Version", value: Bundle.main.appVersion)
-          Text("Reads the chosen folder in place. No uploading, no downloading, no network calls.")
+          Text("Reads the chosen folder in place. A lesson held in iCloud Drive is fetched only when you play it; nothing is uploaded and there are no accounts.")
             .font(.caption)
             .foregroundStyle(Palette.inkDim)
         }

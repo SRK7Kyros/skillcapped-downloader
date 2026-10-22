@@ -2,21 +2,42 @@ import SwiftUI
 
 /// Where the library comes from.
 ///
-/// Sideloaded builds cannot present the system folder picker: its initializer
-/// requires the iCloud Documents entitlement, a free Apple ID cannot grant one,
-/// and the app is killed on the spot (`Application initializing document picker
-/// is missing the iCloud entitlement`). So the picker is gone — the app reads
-/// what iOS already gives it, its own Documents folder, shown in Files as
-/// "On My iPhone › SkillCapped Local", and lists every library folder in there.
+/// The first choice is any folder at all — the system picker, so iCloud Drive, an
+/// external volume or another app's folder all work, read in place. Some builds
+/// cannot open that picker: it needs an iCloud container entitlement in the
+/// signing profile, and `FolderAccess` reports the refusal instead of letting the
+/// app die. For those, the sheet keeps listing the library folders already in the
+/// app's own Documents folder ("On My iPhone › SkillCapped Local") together with
+/// the copy-in steps.
 struct LibraryLocationView: View {
   @EnvironmentObject private var store: LibraryStore
   @Environment(\.dismiss) private var dismiss
 
   @State private var candidates: [URL] = []
+  @State private var pickerRequest: FolderPickerRequest?
+  @State private var pickerNote: String?
 
   var body: some View {
     NavigationStack {
       Form {
+        Section {
+          Button {
+            openPicker()
+          } label: {
+            Label("Choose a folder…", systemImage: "folder.badge.plus")
+          }
+          if let pickerNote {
+            Text(pickerNote)
+              .font(.caption)
+              .foregroundStyle(Palette.warn)
+              .fixedSize(horizontal: false, vertical: true)
+          }
+        } header: {
+          Text("Any folder")
+        } footer: {
+          Text("Wherever the downloader wrote its folder — iCloud Drive, On My iPad, another app's folder. The app reads it in place and remembers it, so the next launch opens straight into it.")
+        }
+
         Section {
           if candidates.isEmpty {
             Text("No library folder here yet.")
@@ -38,9 +59,9 @@ struct LibraryLocationView: View {
           step("3", "Go to On My iPhone › SkillCapped Local and tap Paste.")
           step("4", "Come back here and tap Scan again.")
         } header: {
-          Text("Add your library")
+          Text("If the picker will not open")
         } footer: {
-          Text("iOS hides the system folder picker from sideloaded apps: it needs an iCloud entitlement a free Apple ID cannot give, and the app is killed the moment it opens one. This folder is the one place iOS lets the app read.")
+          Text("This is the fallback for a build signed without the iCloud entitlement: iOS then refuses to show the picker at all. Copying puts the folder where the app is always allowed to read it.")
         }
 
         Section {
@@ -65,6 +86,26 @@ struct LibraryLocationView: View {
       .onAppear(perform: reload)
     }
     .tint(Palette.brand)
+    .fullScreenCover(item: $pickerRequest) { request in
+      FolderPickerSheet(controller: request.controller) { url in
+        pickerRequest = nil
+        guard let url else { return }
+        pickerNote = nil
+        store.choose(url)
+        dismiss()
+      }
+      .ignoresSafeArea()
+    }
+  }
+
+  private func openPicker() {
+    switch FolderAccess.picker() {
+    case let .ready(controller):
+      pickerNote = nil
+      pickerRequest = FolderPickerRequest(controller: controller)
+    case let .unavailable(reason):
+      pickerNote = reason
+    }
   }
 
   private func row(_ folder: URL) -> some View {

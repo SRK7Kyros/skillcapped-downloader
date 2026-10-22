@@ -1,21 +1,17 @@
 import Foundation
 
-/// Finds library folders the app can open without any system file picker.
+/// Finds library folders, i.e. folders holding the buckets the downloader writes.
 ///
-/// A folder is a library when one of its immediate children is a bucket the
-/// downloader writes (`Courses`, `Videos`, `Commentaries`). Sideloaded builds
-/// cannot present `UIDocumentPickerViewController` at all — it requires the
-/// iCloud Documents entitlement, a free Apple ID cannot grant it, and its
-/// initializer throws `Application initializing document picker is missing the
-/// iCloud entitlement` — so the app reads what iOS already exposes to it: its
-/// own Documents folder, which Files shows as "On My iPhone › SkillCapped
-/// Local".
+/// A folder is a library when one of its immediate children is `Courses`,
+/// `Videos` or `Commentaries` and that bucket is not empty. Nothing here needs
+/// the files themselves — a listing is metadata — so the same walk works on a
+/// folder in iCloud Drive that this device has not downloaded.
 enum LibraryLocator {
   /// Bucket folders the downloader writes under a library root.
   static let buckets = ["courses", "videos", "commentaries"]
 
-  /// How deep to look below Documents for a library. The downloader's own layout
-  /// is `Courses/<role>/<course>/`, so a copied library sits at depth 1–2.
+  /// How deep to look below a root for a library. The downloader's own layout is
+  /// `Courses/<role>/<course>/`, so a library sits at depth 1–2.
   static let maxDepth = 4
 
   /// True when `url` holds a non-empty bucket folder. An empty `Courses` is not
@@ -28,8 +24,9 @@ enum LibraryLocator {
 
   /// Every library folder at or below `root`, shallowest first. A library is not
   /// searched further: its lessons are what it offers, and a nested copy would
-  /// only duplicate them.
-  static func libraries(in root: URL, manager: FileManager = .default) -> [URL] {
+  /// only duplicate them. `depth` caps the walk, which a folder handed back by
+  /// the picker uses to look only one level down.
+  static func libraries(in root: URL, depth limit: Int = maxDepth, manager: FileManager = .default) -> [URL] {
     var found: [URL] = []
     var queue: [(url: URL, depth: Int)] = [(root, 0)]
     while !queue.isEmpty {
@@ -38,7 +35,7 @@ enum LibraryLocator {
         found.append(url)
         continue
       }
-      guard depth < maxDepth else { continue }
+      guard depth < limit else { continue }
       queue.append(contentsOf: directoryChildren(of: url, manager: manager).map { ($0, depth + 1) })
     }
     return found

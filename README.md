@@ -155,11 +155,11 @@ still adds it to the bulk selection.
 
 ## iOS app
 
-`ios/` is a read-only phone companion: copy the folder the downloader writes to
-into the app's folder in Files (On My iPhone › SkillCapped Local), and it becomes
-a browsable library with real cover art and native playback. Nothing is
-downloaded, copied or uploaded — the app scans the folder in place and plays the
-files it finds.
+`ios/` is a read-only phone companion: point it at the folder the downloader
+writes to — wherever it lives, iCloud Drive included — and it becomes a browsable
+library with real cover art and native playback. The folder is read in place:
+nothing is uploaded, nothing is copied, and a lesson held only in iCloud is
+fetched the moment you play it.
 
 - **What it reads.** `<title> [<uuid>] <quality>.mp4` under
   `Courses/<role>/<course>/`, `Videos/<role>/<category>/` and
@@ -174,23 +174,36 @@ files it finds.
 - **Playback.** `AVPlayerViewController`, so picture in picture, AirPlay and
   subtitle tracks come for free; the position of every file is remembered and
   resumed above five seconds.
-- **Folder access.** Not the system picker, deliberately: `UIDocumentPickerViewController`
-  requires the iCloud Documents entitlement, a free Apple ID cannot grant one, and
-  a sideloaded build is killed by `Application initializing document picker is
-  missing the iCloud entitlement` the moment it opens one. Instead the app reads
-  its own Documents folder — Files shows it as **On My iPhone › SkillCapped
-  Local** (`UIFileSharingEnabled`) — and `LibraryLocator` lists every folder in
-  there holding `Courses`, `Videos` or `Commentaries`. A single folder is adopted
-  on launch; several are offered in the `Library folder` sheet, which also carries
-  the copy-in steps and `Forget folder`. The last choice is remembered as a path
-  relative to Documents, and a folder opened from another app still arrives as a
-  security-scoped bookmark. `Settings` reports what was scanned and how large it
-  is.
+- **Folder access.** `Choose a folder…` opens the system picker, so iCloud Drive,
+  On My iPad and another app's folder all work; the pick becomes a security-scoped
+  bookmark and the next launch reopens it. That picker needs an iCloud container
+  entitlement in the signing profile — without one, UIKit **throws an Objective-C
+  exception from the initializer** (`Application initializing document picker is
+  missing the iCloud entitlement`), which Swift cannot catch. So the call lives in
+  `Support/PickerProbe.m`, the app ships the containers in
+  `SkillCappedLocal.entitlements` (ad-hoc signed into the IPA by CI so a
+  re-signing tool keeps them), and a build whose profile lacks them reports the
+  refusal in the sheet instead of dying. The fallback is unchanged: with
+  `UIFileSharingEnabled` the app's own Documents folder is visible as **On My
+  iPhone › SkillCapped Local**, and `LibraryLocator` lists every folder in there
+  holding `Courses`, `Videos` or `Commentaries`. A single candidate is adopted on
+  launch, several are offered in the `Library folder` sheet. Picking a folder that
+  merely *contains* the library (iCloud Drive's root, a Downloads folder) adopts
+  the only library one level down. `Settings` reports what was scanned, how large
+  it is and whether it lives in iCloud.
+- **Cloud files.** A pick does not download anything — a listing and a file size
+  are metadata. A lesson whose bytes are only in iCloud is a placeholder
+  `AVPlayer` cannot open, so playback asks iCloud for it (`CloudFile`) and shows
+  `Downloading from iCloud…` until it lands; a poster that cannot be generated
+  falls back to the gradient.
 - **Build.** XcodeGen generates the project from `ios/project.yml`
   (`brew install xcodegen && cd ios && xcodegen generate`). iPhone and iPad,
   iOS 17+. `.github/workflows/ios.yml` runs the unit and UI suites on a
-  simulator and publishes an unsigned IPA artifact; install it with a sideloader
-  (Feather, AltStore), which re-signs it.
+  simulator and publishes an IPA artifact — ad-hoc signed with
+  `SkillCappedLocal.entitlements` so a sideloader (Feather, AltStore) keeps the
+  iCloud containers when it re-signs. The container name must be one the signing
+  team owns: change it in the entitlements file and add it to the App ID in the
+  developer portal.
 
 ## Development
 

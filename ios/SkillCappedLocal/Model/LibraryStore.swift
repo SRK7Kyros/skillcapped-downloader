@@ -6,6 +6,9 @@ final class LibraryStore: ObservableObject {
   @Published private(set) var scanning = false
   @Published private(set) var message: String?
   @Published private(set) var rootName: String?
+  /// True when the library sits in iCloud Drive, where a lesson may still be a
+  /// placeholder until playback asks for it.
+  @Published private(set) var isCloudRoot = false
   /// Library folders the app can already read, i.e. what it found in Documents.
   @Published private(set) var candidates: [URL] = []
 
@@ -47,25 +50,40 @@ final class LibraryStore: ObservableObject {
     candidates = LibraryLocator.libraries(in: documents)
   }
 
-  /// Point the library at `url`. A folder inside the app's Documents needs no
-  /// bookmark — the sandbox already grants it — while anything handed to us from
-  /// outside (an opened folder, an older saved bookmark) is remembered as a
-  /// security-scoped bookmark.
+  /// Point the library at `url` — a folder the system picker handed back, one of
+  /// the folders waiting in Documents, or a folder another app opened. A folder
+  /// inside the app's own Documents needs no bookmark (the sandbox already grants
+  /// it) while anything from outside is remembered as a security-scoped bookmark,
+  /// which is also what keeps an iCloud Drive folder reachable across launches.
   func choose(_ url: URL) {
-    let target = url.standardizedFileURL
+    let target = library(in: url).standardizedFileURL
     if isInsideDocuments(target) {
       UserDefaults.standard.set(relativePath(of: target), forKey: Self.pathKey)
       UserDefaults.standard.removeObject(forKey: Self.bookmarkKey)
       attach(target, persist: false)
       return
     }
-    guard let bookmark = try? url.bookmarkData(options: [], includingResourceValuesForKeys: nil, relativeTo: nil) else {
+    guard let bookmark = try? target.bookmarkData(options: [], includingResourceValuesForKeys: nil, relativeTo: nil) else {
       message = "That folder could not be remembered. Copy it into the app instead: Files › On My iPhone › SkillCapped Local."
       return
     }
     UserDefaults.standard.set(bookmark, forKey: Self.bookmarkKey)
     UserDefaults.standard.removeObject(forKey: Self.pathKey)
-    attach(url, persist: false)
+    attach(target, persist: false)
+  }
+
+  /// A pick may be the library itself or the folder that holds it — iCloud
+  /// Drive's root, a Downloads folder. Adopt the only library one level down,
+  /// and otherwise take the folder as given (scanning reports what it found).
+  private func library(in url: URL) -> URL {
+    guard !LibraryLocator.isLibrary(url) else { return url }
+    let found = LibraryLocator.libraries(in: url, depth: 2)
+    return found.count == 1 ? found[0] : url
+  }
+
+  /// Surface something the app could not do without losing the current library.
+  func report(_ text: String) {
+    message = text
   }
 
   func isCurrent(_ url: URL) -> Bool {
@@ -80,6 +98,7 @@ final class LibraryStore: ObservableObject {
     scoped = nil
     scan = nil
     rootName = nil
+    isCloudRoot = false
     message = nil
     Task { await PosterStore.shared.forget() }
   }
@@ -127,6 +146,7 @@ final class LibraryStore: ObservableObject {
     let started = url.startAccessingSecurityScopedResource()
     scoped = url
     rootName = displayName(for: url)
+    isCloudRoot = (try? url.resourceValues(forKeys: [.isUbiquitousItemKey]))?.isUbiquitousItem == true
     if persist, let bookmark = try? url.bookmarkData(options: [], includingResourceValuesForKeys: nil, relativeTo: nil) {
       UserDefaults.standard.set(bookmark, forKey: Self.bookmarkKey)
     }

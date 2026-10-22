@@ -83,7 +83,7 @@ private struct WelcomeView: View {
         .font(.largeTitle.weight(.bold))
         .foregroundStyle(Palette.ink)
 
-      Text("Copy the folder the downloader writes to — the one holding Courses, Videos and Commentaries — into this app's folder in Files (On My iPhone › SkillCapped Local). The app reads it in place: nothing is copied again by the app, and it never downloads anything.")
+      Text("Copy the folder the downloader writes to — the one holding Courses, Videos and Commentaries — into this app's folder in Files (On My iPhone › SkillCapped Local), or choose it wherever it already lives, iCloud Drive included. The app reads it in place: nothing is copied again by the app.")
         .font(.subheadline)
         .foregroundStyle(Palette.inkDim)
         .fixedSize(horizontal: false, vertical: true)
@@ -91,7 +91,7 @@ private struct WelcomeView: View {
       VStack(alignment: .leading, spacing: 10) {
         bullet("play.rectangle.fill", "Native playback", "AVPlayer, with picture in picture, AirPlay and resume.")
         bullet("photo.fill", "Real cover art", "A frame of each lesson, cached on the phone.")
-        bullet("internaldrive.fill", "Stays local", "No network calls at all.")
+        bullet("icloud.fill", "Cloud or local", "A folder in iCloud Drive is read the same way; a lesson is fetched only when you play it.")
       }
 
       if let folder {
@@ -108,7 +108,7 @@ private struct WelcomeView: View {
       }
 
       Button(action: pick) {
-        Label("Choose library folder", systemImage: "folder.badge.plus")
+        Label("Choose a folder", systemImage: "folder.badge.plus")
           .font(.headline)
           .frame(maxWidth: .infinity)
           .padding(.vertical, 14)

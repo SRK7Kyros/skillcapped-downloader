@@ -6,7 +6,7 @@ on:
       version:
         description: Marketing version baked into the IPA
         required: false
-        default: "1.1.0"
+        default: "1.2.0"
   push:
     paths:
       - "ios/**"
@@ -25,7 +25,7 @@ jobs:
 
       - name: Resolve version
         id: version
-        run: echo "version=${{ inputs.version || '1.1.0' }}" >> "$GITHUB_OUTPUT"
+        run: echo "version=${{ inputs.version || '1.2.0' }}" >> "$GITHUB_OUTPUT"
 
       - name: Install XcodeGen
         run: brew install xcodegen
@@ -100,6 +100,18 @@ jobs:
           rm -rf build/Payload build/SkillCappedLocal.ipa
           mkdir -p build/Payload
           cp -R "$APP" build/Payload/
+
+          # The folder picker only opens when the running signature carries an
+          # iCloud container entitlement. This build is unsigned, so sign it
+          # ad-hoc with the app's entitlements: the signer that re-signs the IPA
+          # for the device (zsign, behind Feather/AltStore) reads them back off
+          # the binary and keeps them.
+          ENT="ios/SkillCappedLocal/SkillCappedLocal.entitlements"
+          PACKAGED=$(find build/Payload -maxdepth 1 -name "*.app" -print -quit)
+          codesign --force --sign - --timestamp=none --entitlements "$ENT" "$PACKAGED"
+          echo "--- entitlements on the packaged app ---"
+          codesign -d --entitlements :- "$PACKAGED"
+
           cd build
           zip -qry SkillCappedLocal.ipa Payload
           unzip -l SkillCappedLocal.ipa | head -20

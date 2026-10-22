@@ -9,8 +9,8 @@ options:
 settings:
   base:
     SWIFT_VERSION: "5.0"
-    MARKETING_VERSION: "1.1.0"
-    CURRENT_PROJECT_VERSION: "1"
+    MARKETING_VERSION: "1.2.0"
+    CURRENT_PROJECT_VERSION: "2"
 
 targets:
   SkillCappedLocal:
@@ -20,18 +20,26 @@ targets:
       - path: SkillCappedLocal
         excludes:
           - "Info.plist"
+          - "SkillCappedLocal.entitlements"
     settings:
       base:
         PRODUCT_NAME: SkillCappedLocal
         PRODUCT_BUNDLE_IDENTIFIER: com.kyros.skillcappedlocal
         INFOPLIST_FILE: SkillCappedLocal/Info.plist
         GENERATE_INFOPLIST_FILE: NO
+        SWIFT_OBJC_BRIDGING_HEADER: SkillCappedLocal/Support/Bridging-Header.h
         TARGETED_DEVICE_FAMILY: "1,2"
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ENABLE_USER_SCRIPT_SANDBOXING: YES
         CODE_SIGN_STYLE: Manual
         CODE_SIGN_IDENTITY: ""
         DEVELOPMENT_TEAM: ""
+      configs:
+        # Only the builds that get sideloaded carry the iCloud containers the
+        # folder picker checks for; Debug (what the simulator tests run) does not,
+        # so a simulator run never depends on a signing profile.
+        Release:
+          CODE_SIGN_ENTITLEMENTS: SkillCappedLocal/SkillCappedLocal.entitlements
     scheme:
       testTargets:
         - SkillCappedLocalTests

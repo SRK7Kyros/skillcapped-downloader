@@ -90,4 +90,20 @@ final class LibraryLocatorTests: XCTestCase {
     try touch("\(deep)/Courses/adc/course/lesson [a1b2c3d4e5] 1080p.mp4")
     XCTAssertTrue(LibraryLocator.libraries(in: root).isEmpty)
   }
+
+  func testAPickedFolderFindsTheLibraryInsideIt() throws {
+    let picked = try folder("picked")
+    try touch("picked/SkillCapped/Courses/adc/course/lesson [a1b2c3d4e5] 1080p.mp4")
+
+    let found = LibraryLocator.libraries(in: picked, depth: 2)
+    XCTAssertEqual(found.map(\.lastPathComponent), ["SkillCapped"])
+  }
+
+  func testThePickedFolderLookStaysShallow() throws {
+    let picked = try folder("picked")
+    try touch("picked/a/b/Courses/adc/course/lesson [a1b2c3d4e5] 1080p.mp4")
+
+    XCTAssertTrue(LibraryLocator.libraries(in: picked, depth: 2).isEmpty)
+    XCTAssertEqual(LibraryLocator.libraries(in: picked).map(\.lastPathComponent), ["b"])
+  }
 }
