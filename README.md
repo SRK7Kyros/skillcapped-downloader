@@ -187,8 +187,10 @@ fetched the moment you play it.
   `[UTTypeItem, UTTypeFolder]`; KartPad's working picker asks for
   `[UTTypeItem, UTTypeData, UTTypeDiskImage, UTTypeFolder]`), and the folder still
   comes back in place because `asCopy` stays `NO`. The probe walks a ladder — item
-  + folder, the same with multiple selection, item + data + folder, folder only,
-  folder copy-in — and uses the first rung the running iOS accepts. The
+  + folder with multiple selection (a folder is selectable only while multi-select
+  is on, now that the folder-only presentation is refused), the same single-select,
+  item + data + folder, folder only, folder copy-in — and uses the first rung the
+  running iOS accepts. The
   **Picker diagnostics** section in the sheet lists every rung with the exact UIKit
   sentence for the ones refused, so a device that refuses them all says so in a
   screenshot. No entitlements are shipped: an earlier build declared an iCloud
@@ -197,8 +199,9 @@ fetched the moment you play it.
   the app's Documents folder, since left on its default root it opens on
   "Recents / No Recents" with Open disabled. `FolderPickerTests` builds it on every
   run, pins that starting folder and pins the ladder's first rung as item + folder
-  (`FolderPickerUITests` drives the real button and insists the system picker
-  appears — it does in the simulator, screenshot attached to the run). A refusal
+  with multiple selection (`FolderPickerUITests` drives the real button and insists
+  the system picker appears — it does in the simulator, screenshot attached to the
+  run). A refusal
   names the iOS version and build it came from, so a device-side refusal diagnoses
   itself. The fallback is unchanged: with `UIFileSharingEnabled` the app's own
   Documents folder is visible as **On My iPhone › SkillCapped Local**, and
