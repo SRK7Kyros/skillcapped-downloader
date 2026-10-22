@@ -87,6 +87,9 @@ final class StreamAsset: NSObject, AVAssetResourceLoaderDelegate {
 
   // MARK: - Serving
 
+  private let lock = NSLock()
+  private var dropped: Set<ObjectIdentifier> = []
+
   func resourceLoader(
     _ resourceLoader: AVAssetResourceLoader,
     shouldWaitForLoadingOfRequestedResource loadingRequest: AVAssetResourceLoadingRequest
@@ -100,21 +103,44 @@ final class StreamAsset: NSObject, AVAssetResourceLoaderDelegate {
       loadingRequest.finishLoading()
       return true
     }
-    let file = self.file
-    queue.async { Self.serve(loadingRequest, from: file) }
+    queue.async { self.serve(loadingRequest) }
     return true
+  }
+
+  /// A seek abandons the read in flight; its data has to stop flowing then, or
+  /// scrubbing through a lesson would pull the whole file off disk.
+  func resourceLoader(
+    _ resourceLoader: AVAssetResourceLoader,
+    didCancel loadingRequest: AVAssetResourceLoadingRequest
+  ) {
+    lock.lock()
+    dropped.insert(ObjectIdentifier(loadingRequest))
+    lock.unlock()
+  }
+
+  private func wasDropped(_ request: AVAssetResourceLoadingRequest) -> Bool {
+    lock.lock()
+    defer { lock.unlock() }
+    return dropped.contains(ObjectIdentifier(request))
+  }
+
+  private func forget(_ request: AVAssetResourceLoadingRequest) {
+    lock.lock()
+    dropped.remove(ObjectIdentifier(request))
+    lock.unlock()
   }
 
   private static func slice(_ body: Data, for request: AVAssetResourceLoadingRequest) -> Data {
     guard let data = request.dataRequest else { return body }
     let offset = max(0, Int(data.requestedOffset))
-    let length = data.requestsAllDataToEndOfFile ? body.count - offset : Int(data.requestedLength)
+    let length = data.requestsAllDataToEndOfResource ? body.count - offset : data.requestedLength
     let start = min(max(0, offset), body.count)
     let end = min(body.count, start + max(0, length))
     return body.subdata(in: start..<end)
   }
 
-  private static func serve(_ request: AVAssetResourceLoadingRequest, from file: URL) {
+  private func serve(_ request: AVAssetResourceLoadingRequest) {
+    defer { forget(request) }
     let size = (try? file.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
     guard size > 0 else {
       request.finishLoading(with: StreamFailure.noBytes)
@@ -140,15 +166,17 @@ final class StreamAsset: NSObject, AVAssetResourceLoaderDelegate {
       request.finishLoading(with: StreamFailure.unreadable)
       return
     }
-    let length = data.requestsAllDataToEndOfFile ? available : min(data.requestedLength, available)
+    let length = data.requestsAllDataToEndOfResource
+      ? available
+      : min(Int64(data.requestedLength), available)
     var remaining = length
-    while remaining > 0, !data.isCancelled {
+    while remaining > 0, !wasDropped(request) {
       let take = Int(min(Int64(chunk), remaining))
       guard let bytes = try? handle.read(upToCount: take), !bytes.isEmpty else { break }
       data.respond(with: bytes)
       remaining -= Int64(bytes.count)
     }
-    if !data.isCancelled {
+    if !wasDropped(request) {
       request.finishLoading()
     }
   }

@@ -171,11 +171,13 @@ on the phone itself, into the same folders the desktop build writes.
   the role chips filter. A course that is already here wears the console's green
   border, solid when it is complete.
 - **Downloading.** `SegmentDownloader` fetches the HLS parts four at a time under
-  one shared polite budget, then remuxes to MP4 with `AVAssetExportSession` and
-  verifies the output before the row turns `ready`. Files land in
-  `Courses/<role>/<course>/`, `Videos/<role>/<category>/` and
-  `Commentaries/<role>/` under the desktop's `<title> [<uuid>] <quality>.mp4`
-  name, so a phone download and a desktop download of the same course merge
+  one shared polite budget and merges them into one MPEG-TS file, which is what
+  lands in the library — nothing is re-encoded, because iOS cannot demux a
+  transport stream and the player reads it through the HLS stack instead (see
+  **Playback**). Files land in `Courses/<role>/<course>/`,
+  `Videos/<role>/<category>/` and `Commentaries/<role>/` under the desktop's
+  `<title> [<uuid>] <quality>.<ext>` name — `.ts` from the phone, `.mp4` from the
+  desktop — so a phone download and a desktop download of the same course merge
   instead of duplicating. One lesson runs at a time so the phone stays
   responsive, and the queue is persisted: a relaunch resumes it.
 - **Quality.** The order in `Settings` is the fallback ladder — 1080p, then 720p,
@@ -190,19 +192,27 @@ on the phone itself, into the same folders the desktop build writes.
   at, so the browser finds them immediately; with no folder chosen they go to the
   app's own Documents folder, which is the same place the desktop library lands
   when you use **On My iPhone › SkillCapped Local**.
-- **What it reads.** `<title> [<uuid>] <quality>.mp4` under
+- **What it reads.** `<title> [<uuid>] <quality>.<ext>` under
   `Courses/<role>/<course>/`, `Videos/<role>/<category>/` and
   `Commentaries/<role>/`, exactly as `src/core/naming.ts` writes them, joined to
   `.skillcapped/catalog.json` for titles, durations and the order a course lists
-  its lessons in. Without that file the folders still group a course, and a video
-  copied in by hand keeps its own name. MPEG-TS files (what a cancelled remux
-  leaves behind) are skipped, because AVPlayer cannot play them.
+  its lessons in. Both containers are playable — an `.mp4` from the desktop and a
+  `.ts` from this app (and a `.ts` copied in by hand). Without that catalogue file
+  the folders still group a course, and a video copied in by hand keeps its own
+  name.
 - **Cover art.** A frame pulled out of each lesson (`AVAssetImageGenerator`), a
-  little way in, cached under `Caches/posters`. A file that cannot yield a frame
-  falls back to a gradient seeded from its title, so a card never looks broken.
+  little way in, cached under `Caches/posters`. The generator is built on the
+  same asset the player gets, so a downloaded `.ts` yields a real frame too. A
+  file that cannot yield a frame falls back to a gradient seeded from its title,
+  so a card never looks broken.
 - **Playback.** `AVPlayerViewController`, so picture in picture, AirPlay and
   subtitle tracks come for free; the position of every file is remembered and
-  resumed above five seconds.
+  resumed above five seconds. A downloaded `.ts` is played by handing the player
+  a **one-segment `#EXTM3U` playlist** (`Support/StreamAsset.swift`): the file is
+  its own only segment, its duration comes from the catalogue (or a placeholder
+  when unknown), and its bytes are served to `AVAssetResourceLoader` straight
+  from disk — no server, no conversion, nothing copied. AVFoundation seeks
+  through that loader by byte range, so scrubbing works on a merged file too.
 - **Folder access.** `Choose a folder…` opens the system picker, so iCloud Drive,
   On My iPad and another app's folder all work; the pick becomes a security-scoped
   bookmark and the next launch reopens it. Two things refuse it otherwise, and

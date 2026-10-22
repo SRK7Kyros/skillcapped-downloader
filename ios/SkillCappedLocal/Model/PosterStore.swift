@@ -66,7 +66,10 @@ actor PosterStore {
     generator.requestedTimeToleranceAfter = CMTime(seconds: 2, preferredTimescale: 600)
 
     let time = CMTime(seconds: seconds, preferredTimescale: 600)
-    let frame = (try? await generator.image(at: time)) ?? (try? await generator.image(at: .zero))
+    var frame = try? await generator.image(at: time)
+    if frame == nil {
+      frame = try? await generator.image(at: .zero)
+    }
     _ = media?.loader
     guard let frame else { return nil }
     return UIImage(cgImage: frame.image)
