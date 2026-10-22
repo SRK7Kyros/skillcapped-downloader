@@ -1,8 +1,8 @@
 import XCTest
 
 /// The folder button used to kill the app: UIKit raises an Objective-C exception
-/// from the picker's initializer when the running signature carries no iCloud
-/// container entitlement. This drives the real button and insists the system
+/// from the picker's initializer (a folder-only type array is refused on iOS 26+,
+/// whatever `asCopy` says). This drives the real button and insists the system
 /// folder picker presents — and that it can be dismissed again.
 final class FolderPickerUITests: XCTestCase {
   func testTheFolderButtonPresentsTheSystemPicker() {
@@ -25,7 +25,8 @@ final class FolderPickerUITests: XCTestCase {
     let open = app.buttons["Open"]
     let cancel = app.buttons["Cancel"]
     let browse = app.buttons["Browse"]
-    let pickerIsUp = { open.exists || cancel.exists || browse.exists }
+    let select = app.buttons["Select"]
+    let pickerIsUp = { open.exists || cancel.exists || browse.exists || select.exists }
     let deadline = Date().addingTimeInterval(30)
     while Date() < deadline, !pickerIsUp() {
       Thread.sleep(forTimeInterval: 0.3)

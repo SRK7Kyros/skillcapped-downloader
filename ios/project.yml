@@ -9,8 +9,8 @@ options:
 settings:
   base:
     SWIFT_VERSION: "5.0"
-    MARKETING_VERSION: "1.2.4"
-    CURRENT_PROJECT_VERSION: "3"
+    MARKETING_VERSION: "1.2.5"
+    CURRENT_PROJECT_VERSION: "4"
 
 targets:
   SkillCappedLocal:
@@ -20,7 +20,6 @@ targets:
       - path: SkillCappedLocal
         excludes:
           - "Info.plist"
-          - "SkillCappedLocal.entitlements"
     settings:
       base:
         PRODUCT_NAME: SkillCappedLocal
@@ -34,12 +33,6 @@ targets:
         CODE_SIGN_STYLE: Manual
         CODE_SIGN_IDENTITY: ""
         DEVELOPMENT_TEAM: ""
-      configs:
-        # Only the builds that get sideloaded carry the iCloud containers the
-        # folder picker checks for; Debug (what the simulator tests run) does not,
-        # so a simulator run never depends on a signing profile.
-        Release:
-          CODE_SIGN_ENTITLEMENTS: SkillCappedLocal/SkillCappedLocal.entitlements
     scheme:
       testTargets:
         - SkillCappedLocalTests

@@ -18,8 +18,8 @@ final class LibraryStore: ObservableObject {
   private var scoped: URL?
 
   var hasFolder: Bool { scoped != nil }
-  /// "On My iPhone › SkillCapped Local" — the one folder the app may read without
-  /// the iCloud entitlement a sideloaded build cannot have.
+  /// "On My iPhone › SkillCapped Local" — the one folder the app may always read,
+  /// whatever the system picker decides to allow.
   var documentsURL: URL { documents }
 
   init() {

@@ -5,7 +5,66 @@
 @interface SkillCappedFolderPickerResult ()
 @property (nonatomic, nullable, readwrite) UIViewController *controller;
 @property (nonatomic, copy, nullable, readwrite) NSString *reason;
+
++ (NSString *)textFor:(NSException *)exception;
 @end
+
+/// The type lists to ask for, best first.
+///
+/// A **folder-only** list is what UIKit 26 and later refuses from the
+/// initializer ("folder import is not supported, use asCopy:false" — raised even
+/// though the call already passes `asCopy:NO`, so the hint names nothing that can
+/// be satisfied). Naming `UTTypeItem` beside the folder keeps the picker on the
+/// ordinary path while still letting a folder be chosen, and the folder is still
+/// handed back in place because `asCopy` stays `NO`.
+///
+/// `multi` leads because a folder is only *selectable* in the folder-only
+/// presentation ("To allow folder selection, initialize with an array containing
+/// only kUTTypeFolder" — Apple, Providing access to directories), and that
+/// presentation is exactly what iOS 26 refuses. Multiple selection is how
+/// LiveContainer's guest-app shim regains it while still naming `UTTypeItem`:
+/// `/prevent crash when selecting only folder/`, it sets the type list to
+/// `@[UTTypeItem, UTTypeFolder]` **and** turns selection on.
+static NSArray<NSDictionary<NSString *, id> *> *SkillCappedRecipes(void) {
+  return @[
+    @{ @"name": @"item + folder, multiple, in place",
+       @"types": @[ UTTypeItem, UTTypeFolder ],
+       @"copy": @NO,
+       @"multi": @YES },
+    @{ @"name": @"item + folder, in place",
+       @"types": @[ UTTypeItem, UTTypeFolder ],
+       @"copy": @NO,
+       @"multi": @NO },
+    @{ @"name": @"item + data + folder, in place",
+       @"types": @[ UTTypeItem, UTTypeData, UTTypeFolder ],
+       @"copy": @NO,
+       @"multi": @NO },
+    @{ @"name": @"folder only, in place",
+       @"types": @[ UTTypeFolder ],
+       @"copy": @NO,
+       @"multi": @NO },
+    @{ @"name": @"folder only, copy in",
+       @"types": @[ UTTypeFolder ],
+       @"copy": @YES,
+       @"multi": @NO },
+  ];
+}
+
+/// Builds one picker. Raises (Objective-C) when UIKit refuses the request, which
+/// is exactly what every caller wraps in `@try`.
+static UIViewController *SkillCappedBuild(NSDictionary<NSString *, id> *recipe,
+                                          NSURL *_Nullable directory) {
+  UIDocumentPickerViewController *picker =
+      [[UIDocumentPickerViewController alloc] initForOpeningContentTypes:recipe[@"types"]
+                                                                  asCopy:[recipe[@"copy"] boolValue]];
+  picker.allowsMultipleSelection = [recipe[@"multi"] boolValue];
+  if (directory != nil) {
+    // A picker left on its default "Recents" root can keep Open disabled and
+    // gives the user nothing to select.
+    picker.directoryURL = directory;
+  }
+  return picker;
+}
 
 @implementation SkillCappedFolderPickerResult
 
@@ -14,72 +73,45 @@
 }
 
 + (instancetype)makeStartingAt:(NSURL *)directory {
-  SkillCappedFolderPickerResult *result = [SkillCappedFolderPickerResult new];
   NSMutableArray<NSString *> *refusals = [NSMutableArray array];
 
-  // Opening a folder in place means asking for the `.folder` type with
-  // `asCopy:NO` — spelled out. The bare `initForOpeningContentTypes:` resolves
-  // to a copy-in (import) presentation on some iOS builds, which UIKit refuses
-  // for a folder ("folder import is not supported, use asCopy:false", the exact
-  // sentence a device running 26.6.2 printed), and which in any case only
-  // enables Files' Open button for files.
-  @try {
-    UIDocumentPickerViewController *picker =
-        [[UIDocumentPickerViewController alloc] initForOpeningContentTypes:@[ UTTypeFolder ]
-                                                                    asCopy:NO];
-    picker.allowsMultipleSelection = NO;
-    // A picker left on its default "Recents" root can keep Open disabled and
-    // gives the user nothing to select; hand it a real, browsable directory.
-    if (directory != nil) {
-      picker.directoryURL = directory;
+  for (NSDictionary<NSString *, id> *recipe in SkillCappedRecipes()) {
+    @try {
+      SkillCappedFolderPickerResult *result = [SkillCappedFolderPickerResult new];
+      result.controller = SkillCappedBuild(recipe, directory);
+      return result;
+    } @catch (NSException *exception) {
+      [refusals addObject:[NSString stringWithFormat:@"%@ — %@",
+                                                     recipe[@"name"],
+                                                     [self textFor:exception]]];
     }
-    result.controller = picker;
-    return result;
-  } @catch (NSException *exception) {
-    [refusals addObject:[self textFor:exception]];
   }
 
-  // Second try: the pre-iOS-14 open-mode initializer, which has always taken a
-  // folder type. A device that refuses the modern call still gets a picker.
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
-  @try {
-    UIDocumentPickerViewController *picker =
-        [[UIDocumentPickerViewController alloc] initWithDocumentTypes:@[ @"public.folder" ]
-                                                               inMode:UIDocumentPickerModeOpen];
-    picker.allowsMultipleSelection = NO;
-    if (directory != nil) {
-      picker.directoryURL = directory;
-    }
-    result.controller = picker;
-    return result;
-  } @catch (NSException *exception) {
-    [refusals addObject:[self textFor:exception]];
-  }
-#pragma clang diagnostic pop
-
-  // Last try: the convenience initializer, in case a build implements it
-  // correctly where the explicit pair does not.
-  @try {
-    UIDocumentPickerViewController *picker =
-        [[UIDocumentPickerViewController alloc] initForOpeningContentTypes:@[ UTTypeFolder ]];
-    picker.allowsMultipleSelection = NO;
-    if (directory != nil) {
-      picker.directoryURL = directory;
-    }
-    result.controller = picker;
-    return result;
-  } @catch (NSException *exception) {
-    [refusals addObject:[self textFor:exception]];
-  }
-
-  result.reason = [refusals componentsJoinedByString:@"\n\n"];
+  SkillCappedFolderPickerResult *result = [SkillCappedFolderPickerResult new];
+  result.reason = [refusals componentsJoinedByString:@"\n"];
   return result;
 }
 
-/// UIKit's own sentence, which is the useful one to show when it refuses.
++ (NSArray<NSDictionary<NSString *, id> *> *)survey {
+  NSMutableArray<NSDictionary<NSString *, id> *> *rows = [NSMutableArray array];
+
+  for (NSDictionary<NSString *, id> *recipe in SkillCappedRecipes()) {
+    NSMutableDictionary<NSString *, id> *row =
+        [@{ @"name": recipe[@"name"], @"ok": @NO } mutableCopy];
+    @try {
+      (void)SkillCappedBuild(recipe, nil);
+      row[@"ok"] = @YES;
+    } @catch (NSException *exception) {
+      row[@"detail"] = [self textFor:exception];
+    }
+    [rows addObject:row];
+  }
+
+  return rows;
+}
+
 + (NSString *)textFor:(NSException *)exception {
-  return exception.reason.length ? exception.reason : exception.name;
+  return exception.reason.length > 0 ? exception.reason : exception.name;
 }
 
 @end

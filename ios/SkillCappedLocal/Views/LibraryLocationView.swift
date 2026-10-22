@@ -1,21 +1,26 @@
 import SwiftUI
-import UniformTypeIdentifiers
+import UIKit
 
 /// Where the library comes from.
 ///
 /// The first choice is any folder at all — the system picker, so iCloud Drive, an
-/// external volume or another app's folder all work, read in place. Some builds
-/// refuse to open that picker at all, and `FolderAccess` reports the refusal
-/// instead of letting the app die. For those, the sheet keeps listing the library
-/// folders already in the app's own Documents folder ("On My iPhone ›
-/// SkillCapped Local") together with the copy-in steps.
+/// external volume or another app's folder all work, read in place. A folder-only
+/// picker is refused by iOS 26 and later (`folder import is not supported, use
+/// asCopy:false`, raised even when `asCopy` is already `NO`), so `FolderAccess`
+/// asks for a folder *beside* `UTTypeItem` and walks the spellings until one is
+/// accepted. The accepted list is shown in **Picker diagnostics**, and when none
+/// is, the sheet falls back to the library folders already in the app's own
+/// Documents ("On My iPhone › SkillCapped Local") with the copy-in steps.
 struct LibraryLocationView: View {
   @EnvironmentObject private var store: LibraryStore
   @Environment(\.dismiss) private var dismiss
 
   @State private var candidates: [URL] = []
+  @State private var attempts: [FolderAccess.Attempt] = []
   @State private var pickerNote: String?
-  @State private var showingPicker = false
+  /// Held in `@State` so the picker's delegate outlives a body pass — UIKit holds
+  /// delegates weakly.
+  @State private var presenter = FolderPickerPresenter()
 
   var body: some View {
     NavigationStack {
@@ -61,7 +66,42 @@ struct LibraryLocationView: View {
         } header: {
           Text("If the picker will not open")
         } footer: {
-          Text("This is the fallback for a build signed without the iCloud entitlement: iOS then refuses to show the picker at all. Copying puts the folder where the app is always allowed to read it.")
+          Text("Some iOS versions refuse the folder picker outright. Copying puts the folder where the app is always allowed to read it.")
+        }
+
+        Section {
+          DisclosureGroup("Picker diagnostics") {
+            if attempts.isEmpty {
+              Text("Checking…")
+                .font(.footnote)
+                .foregroundStyle(Palette.inkDim)
+            } else {
+              ForEach(attempts) { attempt in
+                VStack(alignment: .leading, spacing: 2) {
+                  HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Image(systemName: attempt.ok ? "checkmark.circle.fill" : "xmark.circle.fill")
+                      .font(.caption)
+                      .foregroundStyle(attempt.ok ? Palette.brand : Palette.warn)
+                    Text(attempt.name)
+                      .font(.footnote)
+                      .foregroundStyle(Palette.ink)
+                  }
+                  if let detail = attempt.detail {
+                    Text(detail)
+                      .font(.caption2)
+                      .foregroundStyle(Palette.inkFaint)
+                      .fixedSize(horizontal: false, vertical: true)
+                  }
+                }
+              }
+            }
+
+            Text("iOS \(UIDevice.current.systemVersion) · build \(Bundle.main.appVersion)")
+              .font(.caption2)
+              .foregroundStyle(Palette.inkFaint)
+          }
+        } footer: {
+          Text("Which folder-picker spellings this build's iOS accepts. The folder button uses the first one marked ✓.")
         }
 
         Section {
@@ -86,34 +126,28 @@ struct LibraryLocationView: View {
       .onAppear(perform: reload)
     }
     .tint(Palette.brand)
-    .fileImporter(
-      isPresented: $showingPicker,
-      allowedContentTypes: [.folder],
-      allowsMultipleSelection: false
-    ) { result in
-      take(result)
-    }
   }
 
   private func openPicker() {
-    if let reason = FolderAccess.refusal(startingAt: store.documentsURL) {
+    switch FolderAccess.picker(startingAt: store.documentsURL) {
+    case let .unavailable(reason):
       pickerNote = reason
-      return
-    }
-    pickerNote = nil
-    showingPicker = true
-  }
+      attempts = FolderAccess.survey()
 
-  private func take(_ result: Result<[URL], Error>) {
-    switch result {
-    case let .success(urls):
-      guard let url = urls.first else { return }
+    case let .ready(controller):
       pickerNote = nil
-      store.choose(url)
-      dismiss()
-    case let .failure(error):
-      guard (error as NSError).code != NSUserCancelledError else { return }
-      pickerNote = "The picker closed without a folder: \(error.localizedDescription)"
+      presenter.present(controller) { result in
+        switch result {
+        case let .success(url):
+          pickerNote = nil
+          store.choose(url)
+          dismiss()
+        case let .failure(error):
+          if case .cancelled = error { return }
+          pickerNote = error.errorDescription
+          attempts = FolderAccess.survey()
+        }
+      }
     }
   }
 
@@ -163,6 +197,9 @@ struct LibraryLocationView: View {
   private func reload() {
     store.refreshCandidates()
     candidates = store.candidates
+    if attempts.isEmpty {
+      attempts = FolderAccess.survey()
+    }
   }
 
   private func name(_ folder: URL) -> String {

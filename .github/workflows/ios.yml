@@ -6,7 +6,7 @@ on:
       version:
         description: Marketing version baked into the IPA
         required: false
-        default: "1.2.3"
+        default: "1.2.5"
   push:
     paths:
       - "ios/**"
@@ -25,7 +25,7 @@ jobs:
 
       - name: Resolve version
         id: version
-        run: echo "version=${{ inputs.version || '1.2.4' }}" >> "$GITHUB_OUTPUT"
+        run: echo "version=${{ inputs.version || '1.2.5' }}" >> "$GITHUB_OUTPUT"
 
       - name: Install XcodeGen
         run: brew install xcodegen
@@ -101,27 +101,12 @@ jobs:
           mkdir -p build/Payload
           cp -R "$APP" build/Payload/
 
-          # The folder picker only opens when the running signature carries an
-          # iCloud container entitlement. This build is unsigned, so sign it
-          # ad-hoc with the app's entitlements: the signer that re-signs the IPA
-          # for the device (zsign, behind Feather/AltStore) reads them back off
-          # the binary and keeps them.
-          ENT="ios/SkillCappedLocal/SkillCappedLocal.entitlements"
-          PACKAGED=$(find build/Payload -maxdepth 1 -name "*.app" -print -quit)
-          codesign --force --sign - --timestamp=none --entitlements "$ENT" "$PACKAGED"
-          echo "--- entitlements on the packaged app ---"
-          SIGNED=$(codesign -d --entitlements :- "$PACKAGED" 2>/dev/null)
-          printf '%s\n' "$SIGNED"
-
-          # The device-side crash came from a build whose signature carried no
-          # iCloud container, so the artifact that leaves here is verified to
-          # carry the app's own container rather than trusting the re-signer.
-          CONTAINER=$(/usr/libexec/PlistBuddy -c "Print :com.apple.developer.icloud-container-identifiers:0" "$ENT")
-          if ! printf '%s' "$SIGNED" | grep -q "$CONTAINER"; then
-            echo "::error::the packaged app carries no $CONTAINER entitlement — the folder picker will be refused on the device"
-            exit 1
-          fi
-
+          # No entitlements, on purpose. An earlier build declared an iCloud
+          # container so the folder picker would accept it, but the refusal was
+          # never about iCloud: iOS 26 refuses a folder-only picker whatever
+          # `asCopy` says (see ios/SkillCappedLocal/Support/PickerProbe.m), and a
+          # container cannot be granted to a sideloaded signature anyway, so
+          # declaring one only asked for something the device cannot authorize.
           cd build
           zip -qry SkillCappedLocal.ipa Payload
           unzip -l SkillCappedLocal.ipa | head -20

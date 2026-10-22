@@ -176,35 +176,39 @@ fetched the moment you play it.
   resumed above five seconds.
 - **Folder access.** `Choose a folder…` opens the system picker, so iCloud Drive,
   On My iPad and another app's folder all work; the pick becomes a security-scoped
-  bookmark and the next launch reopens it. That picker needs an iCloud container
-  entitlement in the signing profile — without one, UIKit **throws an Objective-C
-  exception from the initializer** (`Application initializing document picker is
-  missing the iCloud entitlement`), which Swift cannot catch. So the call lives in
-  `Support/PickerProbe.m`, the app ships the containers in
-  `SkillCappedLocal.entitlements` (ad-hoc signed into the IPA by CI so a
-  re-signing tool keeps them), and a build whose profile lacks them reports the
-  refusal in the sheet instead of dying. Opening a folder is also an API
-  distinction: a directory picker has to ask for `.folder` with **`asCopy:NO`
-  spelled out**, because the convenience `initForOpeningContentTypes:` resolves to
-  a copy-in (import) presentation that UIKit refuses for a folder — a device on
-  iOS 26.6.2 answered `folder import is not supported, use asCopy:false` to it. So
-  the probe asks for the explicit open-in-place pair first, retries with the
-  pre-iOS-14 open-mode call, and reports every refusal if none is allowed; each
-  attempt also points the picker at the app's Documents folder, since left on its
-  default root it opens on "Recents / No Recents" with Open disabled.
-  `FolderPickerTests` builds it on every run and pins that starting folder, and
-  `FolderPickerUITests` drives the real button and insists the system picker
-  appears (it does in the simulator, screenshot attached to the run). A refusal
+  bookmark and the next launch reopens it. Two things refuse it otherwise, and
+  both are reported instead of crashing. UIKit raises an **Objective-C exception
+  from the picker's initializer**, which Swift cannot catch, so the call lives in
+  `Support/PickerProbe.m`. And on iOS 26 and later a **folder-only** type array is
+  refused outright with `folder import is not supported, use asCopy:false` — raised
+  even though the call already passes `asCopy:NO`, so the hint names nothing that
+  can be satisfied. Asking for `.folder` *beside* `UTTypeItem` avoids that path
+  (LiveContainer's guest-app shim rewrites every request to
+  `[UTTypeItem, UTTypeFolder]`; KartPad's working picker asks for
+  `[UTTypeItem, UTTypeData, UTTypeDiskImage, UTTypeFolder]`), and the folder still
+  comes back in place because `asCopy` stays `NO`. The probe walks a ladder — item
+  + folder, the same with multiple selection, item + data + folder, folder only,
+  folder copy-in — and uses the first rung the running iOS accepts. The
+  **Picker diagnostics** section in the sheet lists every rung with the exact UIKit
+  sentence for the ones refused, so a device that refuses them all says so in a
+  screenshot. No entitlements are shipped: an earlier build declared an iCloud
+  container, but the refusal was never about iCloud, and a container cannot be
+  granted to a sideloaded signature anyway. Each attempt also points the picker at
+  the app's Documents folder, since left on its default root it opens on
+  "Recents / No Recents" with Open disabled. `FolderPickerTests` builds it on every
+  run, pins that starting folder and pins the ladder's first rung as item + folder
+  (`FolderPickerUITests` drives the real button and insists the system picker
+  appears — it does in the simulator, screenshot attached to the run). A refusal
   names the iOS version and build it came from, so a device-side refusal diagnoses
-  itself. The fallback is unchanged:
-  with `UIFileSharingEnabled` the app's own Documents folder is visible as **On My
-  iPhone › SkillCapped Local**, and `LibraryLocator` lists every folder in there
-  holding `Courses`, `Videos` or `Commentaries`. A single candidate is adopted on
-  launch, several are offered in the `Library folder` sheet. Picking a folder that
-  merely *contains* the library (iCloud Drive's root, a Downloads folder) adopts
-  the only library one level down (`ExternalFolderTests` pins both, and that the
-  bookmark survives a relaunch). `Settings` reports what was scanned, how large
-  it is and whether it lives in iCloud.
+  itself. The fallback is unchanged: with `UIFileSharingEnabled` the app's own
+  Documents folder is visible as **On My iPhone › SkillCapped Local**, and
+  `LibraryLocator` lists every folder in there holding `Courses`, `Videos` or
+  `Commentaries`. A single candidate is adopted on launch, several are offered in
+  the `Library folder` sheet. Picking a folder that merely *contains* the library
+  (iCloud Drive's root, a Downloads folder) adopts the only library one level down
+  (`ExternalFolderTests` pins both, and that the bookmark survives a relaunch).
+  `Settings` reports what was scanned, how large it is and whether it lives in
+  iCloud.
 - **Cloud files.** A pick does not download anything — a listing and a file size
   are metadata. A lesson whose bytes are only in iCloud can be listed as its
   hidden shadow file (`.Name [id] 1080p.mp4.icloud`): it is shown at the name it
@@ -215,12 +219,8 @@ fetched the moment you play it.
 - **Build.** XcodeGen generates the project from `ios/project.yml`
   (`brew install xcodegen && cd ios && xcodegen generate`). iPhone and iPad,
   iOS 17+. `.github/workflows/ios.yml` runs the unit and UI suites on a
-  simulator and publishes an IPA artifact — ad-hoc signed with
-  `SkillCappedLocal.entitlements` so a sideloader (Feather, AltStore) keeps the
-  iCloud containers when it re-signs, and the packaged app is then **verified** to
-  carry its container (the job fails rather than shipping one without it). The
-  container name must be one the signing team owns: change it in the entitlements
-  file and add it to the App ID in the developer portal.
+  simulator and publishes an unsigned IPA artifact; the sideloader (Feather,
+  AltStore) applies its own signing profile. The app declares no entitlements.
 
 ## Development
 

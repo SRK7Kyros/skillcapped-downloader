@@ -5,12 +5,21 @@ import UIKit
 /// `UIDocumentPickerViewController` raises an Objective-C exception from its
 /// initializer and Swift cannot catch one, so the build lives in
 /// `Support/PickerProbe.m`: a build that cannot open the picker reports why
-/// instead of dying, and the probe tries the open-in-place spellings a device
-/// actually accepts before giving up.
+/// instead of dying, and the probe walks the spellings a device actually accepts
+/// before giving up.
 enum FolderAccess {
   enum Outcome {
     case ready(UIDocumentPickerViewController)
     case unavailable(String)
+  }
+
+  /// One spelling the probe tried, for the in-app diagnostics.
+  struct Attempt: Identifiable {
+    let name: String
+    let ok: Bool
+    let detail: String?
+
+    var id: String { name }
   }
 
   static func picker(startingAt directory: URL?) -> Outcome {
@@ -21,10 +30,23 @@ enum FolderAccess {
     return .ready(controller)
   }
 
-  /// Whether this build can open the picker at all.
+  /// Which spells this build's iOS accepts, in the order the probe tries them.
   ///
-  /// The initializer is what raises, and SwiftUI's `fileImporter` builds that
-  /// same picker internally where a raise would kill the app, so ask first.
+  /// The first accepted one is what the folder button uses, so a device that
+  /// refuses the folder-only picker can say so in the sheet instead of refusing
+  /// silently — and a spelling that starts working again is adopted on its own.
+  static func survey() -> [Attempt] {
+    SkillCappedFolderPickerResult.survey().compactMap { row in
+      guard let name = row["name"] as? String else { return nil }
+      return Attempt(
+        name: name,
+        ok: (row["ok"] as? Bool) ?? false,
+        detail: row["detail"] as? String
+      )
+    }
+  }
+
+  /// Whether this build can open the picker at all.
   static func refusal(startingAt directory: URL?) -> String? {
     switch picker(startingAt: directory) {
     case .ready:
@@ -41,8 +63,8 @@ enum FolderAccess {
     let head = reason.flatMap { $0.isEmpty ? nil : $0 }
       ?? "This build cannot open the system folder picker."
     let why = head.lowercased().contains("icloud")
-      ? "The picker needs the iCloud container entitlement, which only the signing profile can supply."
-      : "The system refused to open the picker."
+      ? "The picker wants an iCloud container only the signing profile can grant."
+      : "This iOS refused every folder-picker spelling the build knows."
     return """
     \(head)
 
