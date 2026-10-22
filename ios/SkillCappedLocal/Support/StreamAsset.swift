@@ -49,9 +49,9 @@ final class StreamAsset: NSObject, AVAssetResourceLoaderDelegate {
   /// is a guess until the stream ends.
   static let unknownSeconds = 3600
 
-  /// Concurrent, because the player asks for the playlist and the first
-  /// segment at the same time and a single-segment range read can be long.
-  let queue = DispatchQueue(label: "com.kyros.skillcappedlocal.stream", attributes: .concurrent)
+  /// Serial on purpose: the loader processes requests synchronously on this
+  /// queue, so a concurrent one lets two answers interleave and stall it.
+  let queue = DispatchQueue(label: "com.kyros.skillcappedlocal.stream")
 
   private let file: URL
   private let seconds: Int
@@ -95,6 +95,14 @@ final class StreamAsset: NSObject, AVAssetResourceLoaderDelegate {
     shouldWaitForLoadingOfRequestedResource loadingRequest: AVAssetResourceLoadingRequest
   ) -> Bool {
     guard let url = loadingRequest.request.url else { return false }
+    #if DEBUG
+    let ask = loadingRequest.dataRequest
+    print(
+      "[stream] \(url.lastPathComponent) offset=\(ask?.requestedOffset ?? -1) "
+        + "length=\(ask?.requestedLength ?? -1) "
+        + "all=\(ask?.requestsAllDataToEndOfResource ?? false)"
+    )
+    #endif
     if url.pathExtension.lowercased() == "m3u8" {
       let body = Data(playlist.utf8)
       loadingRequest.contentInformationRequest?.contentType = "public.m3u8"
@@ -103,7 +111,7 @@ final class StreamAsset: NSObject, AVAssetResourceLoaderDelegate {
       loadingRequest.finishLoading()
       return true
     }
-    queue.async { self.serve(loadingRequest) }
+    serve(loadingRequest)
     return true
   }
 
