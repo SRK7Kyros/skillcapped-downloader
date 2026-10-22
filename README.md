@@ -216,11 +216,14 @@ on the phone itself, into the same folders the desktop build writes.
 - **Playback.** `AVPlayerViewController`, so picture in picture, AirPlay and
   subtitle tracks come for free; the position of every file is remembered and
   resumed above five seconds. A downloaded `.ts` is played by handing the player
-  a **one-segment `#EXTM3U` playlist** (`Support/StreamAsset.swift`): the file is
-  its own only segment, its duration comes from the catalogue (or a placeholder
-  when unknown), and its bytes are served to `AVAssetResourceLoader` straight
-  from disk — no server, no conversion, nothing copied. AVFoundation seeks
-  through that loader by byte range, so scrubbing works on a merged file too.
+  a **one-segment `#EXTM3U` playlist** served by a loopback HTTP server
+  (`Support/LessonServer.swift`): the file is its own only segment, its duration
+  comes from the catalogue (or a placeholder when unknown), and its bytes are
+  served straight from disk by byte range — no conversion, nothing copied.
+  AVFoundation seeks by byte range, so scrubbing works on a merged file too. The
+  resource-loader route was tried first and does not work: Apple's HLS stack
+  refuses the media bytes a delegate answers with, and an asset served that way
+  reports its duration and never a frame.
 - **Folder access.** `Choose a folder…` opens the system picker, so iCloud Drive,
   On My iPad and another app's folder all work; the pick becomes a security-scoped
   bookmark and the next launch reopens it. Two things refuse it otherwise, and
