@@ -3,8 +3,7 @@ import XCTest
 /// The folder button used to kill the app: UIKit raises an Objective-C exception
 /// from the picker's initializer when the running signature carries no iCloud
 /// container entitlement. This drives the real button and insists the system
-/// folder picker presents, ready to open a folder — and that it can be dismissed
-/// again, since the open-in-place browser has no Cancel of its own.
+/// folder picker presents — and that it can be dismissed again.
 final class FolderPickerUITests: XCTestCase {
   func testTheFolderButtonPresentsTheSystemPicker() {
     let app = XCUIApplication()
@@ -25,8 +24,10 @@ final class FolderPickerUITests: XCTestCase {
 
     let open = app.buttons["Open"]
     let cancel = app.buttons["Cancel"]
+    let browse = app.buttons["Browse"]
+    let pickerIsUp = { open.exists || cancel.exists || browse.exists }
     let deadline = Date().addingTimeInterval(30)
-    while Date() < deadline, !open.exists, !cancel.exists {
+    while Date() < deadline, !pickerIsUp() {
       Thread.sleep(forTimeInterval: 0.3)
     }
 
@@ -35,13 +36,13 @@ final class FolderPickerUITests: XCTestCase {
     shot.lifetime = .keepAlways
     add(shot)
 
-    XCTAssertTrue(open.exists || cancel.exists, "the system folder picker should present:\n\(app.debugDescription)")
+    XCTAssertTrue(pickerIsUp(), "the system folder picker should present:\n\(app.debugDescription)")
     XCTAssertEqual(app.state, .runningForeground, "the picker must not kill the app")
 
     if cancel.exists {
       cancel.tap()
     } else {
-      let top = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.06))
+      let top = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.05))
       let bottom = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.95))
       top.press(forDuration: 0.1, thenDragTo: bottom)
     }

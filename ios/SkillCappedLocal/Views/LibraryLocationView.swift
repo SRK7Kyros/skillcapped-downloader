@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// Where the library comes from.
 ///
@@ -14,6 +15,7 @@ struct LibraryLocationView: View {
 
   @State private var candidates: [URL] = []
   @State private var pickerNote: String?
+  @State private var showingPicker = false
 
   var body: some View {
     NavigationStack {
@@ -84,20 +86,34 @@ struct LibraryLocationView: View {
       .onAppear(perform: reload)
     }
     .tint(Palette.brand)
+    .fileImporter(
+      isPresented: $showingPicker,
+      allowedContentTypes: [.folder],
+      allowsMultipleSelection: false
+    ) { result in
+      take(result)
+    }
   }
 
   private func openPicker() {
-    switch FolderAccess.picker(startingAt: store.documentsURL) {
-    case let .ready(controller):
-      pickerNote = nil
-      FolderPickerPresenter.present(controller) { url in
-        guard let url else { return }
-        pickerNote = nil
-        store.choose(url)
-        dismiss()
-      }
-    case let .unavailable(reason):
+    if let reason = FolderAccess.refusal(startingAt: store.documentsURL) {
       pickerNote = reason
+      return
+    }
+    pickerNote = nil
+    showingPicker = true
+  }
+
+  private func take(_ result: Result<[URL], Error>) {
+    switch result {
+    case let .success(urls):
+      guard let url = urls.first else { return }
+      pickerNote = nil
+      store.choose(url)
+      dismiss()
+    case let .failure(error):
+      guard (error as NSError).code != NSUserCancelledError else { return }
+      pickerNote = "The picker closed without a folder: \(error.localizedDescription)"
     }
   }
 

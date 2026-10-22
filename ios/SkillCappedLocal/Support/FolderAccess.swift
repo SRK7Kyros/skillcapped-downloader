@@ -21,6 +21,19 @@ enum FolderAccess {
     return .ready(controller)
   }
 
+  /// Whether this build can open the picker at all.
+  ///
+  /// The initializer is what raises, and SwiftUI's `fileImporter` builds that
+  /// same picker internally where a raise would kill the app, so ask first.
+  static func refusal(startingAt directory: URL?) -> String? {
+    switch picker(startingAt: directory) {
+    case .ready:
+      return nil
+    case let .unavailable(reason):
+      return reason
+    }
+  }
+
   /// UIKit's own reason first — the exact sentence is worth showing — then what
   /// the user can do about it in this build. Only blame the signing profile when
   /// UIKit named iCloud: the picker also refuses for reasons a profile cannot fix.
