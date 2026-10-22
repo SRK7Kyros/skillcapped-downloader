@@ -83,7 +83,7 @@ enum DownloadPlan {
     var url = root
     for component in components { url.appendPathComponent(component, isDirectory: true) }
     return url.appendingPathComponent(
-      fileName(title: title, id: id, qualityLabel: qualityLabel, extension: ext, maxLength: nameBudget),
+      fileName(title: shape.title, id: id, qualityLabel: qualityLabel, extension: ext, maxLength: nameBudget),
       isDirectory: false
     )
   }
