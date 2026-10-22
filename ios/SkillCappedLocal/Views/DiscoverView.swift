@@ -175,6 +175,7 @@ struct DiscoverView: View {
         .overlay {
           Capsule().stroke(role == value ? Color.clear : Palette.line, lineWidth: 1)
         }
+        .contentShape(Capsule())
     }
     .buttonStyle(.plain)
   }

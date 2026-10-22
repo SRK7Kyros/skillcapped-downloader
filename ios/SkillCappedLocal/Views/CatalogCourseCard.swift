@@ -66,6 +66,7 @@ struct CatalogCourseCard: View {
     }
     .background(Palette.surface)
     .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+    .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
     .overlay {
       RoundedRectangle(cornerRadius: 14, style: .continuous)
         .stroke(complete ? Palette.brand : Palette.line, lineWidth: complete ? 1.5 : 1)

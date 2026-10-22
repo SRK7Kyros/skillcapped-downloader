@@ -43,7 +43,11 @@ targets:
     type: bundle.unit-test
     platform: iOS
     sources:
-      - SkillCappedLocalTests
+      - path: SkillCappedLocalTests
+        excludes:
+          - "Fixtures/**"
+      - path: SkillCappedLocalTests/Fixtures
+        buildPhase: resources
     dependencies:
       - target: SkillCappedLocal
     settings:

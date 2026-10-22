@@ -175,26 +175,29 @@ actor SegmentDownloader {
       qualityLabel: label,
       extension: "mp4"
     )
-    try? FileManager.default.createDirectory(
-      at: destination.deletingLastPathComponent(),
-      withIntermediateDirectories: true
-    )
 
-    let partial = destination.appendingPathExtension("part")
-    try? FileManager.default.removeItem(at: partial)
+    // The export runs in the job folder, never in the library: AVFoundation
+    // writes through a helper that does not inherit the app's access to a folder
+    // the user picked, and a half-written file must not land there either.
+    let finished = jobDir.appendingPathComponent("finished-\(qualityId).mp4", isDirectory: false)
+    try? FileManager.default.removeItem(at: finished)
     do {
-      try await Remuxer.remux(ts: merged, to: partial)
-      try await Remuxer.verify(partial, expectedSeconds: request.durationSec)
+      try await Remuxer.remux(ts: merged, to: finished)
+      try await Remuxer.verify(finished, expectedSeconds: request.durationSec)
     } catch {
-      try? FileManager.default.removeItem(at: partial)
+      try? FileManager.default.removeItem(at: finished)
       throw DownloadError.remux((error as? LocalizedError)?.errorDescription ?? error.localizedDescription)
     }
 
-    if FileManager.default.fileExists(atPath: destination.path) {
-      try? FileManager.default.removeItem(at: destination)
-    }
     do {
-      try FileManager.default.moveItem(at: partial, to: destination)
+      try FileManager.default.createDirectory(
+        at: destination.deletingLastPathComponent(),
+        withIntermediateDirectories: true
+      )
+      if FileManager.default.fileExists(atPath: destination.path) {
+        try FileManager.default.removeItem(at: destination)
+      }
+      try FileManager.default.moveItem(at: finished, to: destination)
     } catch {
       throw DownloadError.storage
     }
@@ -398,7 +401,6 @@ enum Remuxer {
     try? FileManager.default.removeItem(at: output)
     session.outputURL = output
     session.outputFileType = .mp4
-    session.shouldOptimizeForNetworkUse = true
     await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
       session.exportAsynchronously { continuation.resume() }
     }
@@ -408,7 +410,14 @@ enum Remuxer {
     case .cancelled:
       throw RemuxFailure.failed("the export was cancelled")
     default:
-      throw RemuxFailure.failed(session.error?.localizedDescription ?? "the export failed")
+      // The domain and code are what makes a device report actionable: the
+      // sentence alone is AVFoundation's catch-all for -11800.
+      let code = session.error.map { error -> String in
+        let ns = error as NSError
+        return "\(ns.domain) \(ns.code)"
+      } ?? "no code"
+      let message = session.error?.localizedDescription ?? "the export failed"
+      throw RemuxFailure.failed("\(message) [\(code)]")
     }
   }
 

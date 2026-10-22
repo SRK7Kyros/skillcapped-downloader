@@ -8,34 +8,39 @@ struct RemotePoster: View {
   var seed: String
 
   var body: some View {
-    ZStack {
-      LinearGradient(
-        colors: Palette.gradient(for: seed),
-        startPoint: .topLeading,
-        endPoint: .bottomTrailing
-      )
-
-      if let url {
-        AsyncImage(url: url) { phase in
-          switch phase {
-          case let .success(image):
-            image
-              .resizable()
-              .scaledToFill()
-          case .failure:
-            glyph
-          case .empty:
-            ProgressView()
-              .tint(.white.opacity(0.4))
-          @unknown default:
-            glyph
-          }
-        }
-      } else {
-        glyph
-      }
-    }
+    // The gradient is the base view, not a ZStack sibling, so the poster takes
+    // exactly the frame the caller gives: an aspect-filled image would report
+    // its own size and overflow — over the card caption and the lesson rows.
+    LinearGradient(
+      colors: Palette.gradient(for: seed),
+      startPoint: .topLeading,
+      endPoint: .bottomTrailing
+    )
+    .overlay { artwork }
     .clipped()
+  }
+
+  @ViewBuilder
+  private var artwork: some View {
+    if let url {
+      AsyncImage(url: url) { phase in
+        switch phase {
+        case let .success(image):
+          image
+            .resizable()
+            .scaledToFill()
+        case .failure:
+          glyph
+        case .empty:
+          ProgressView()
+            .tint(.white.opacity(0.4))
+        @unknown default:
+          glyph
+        }
+      }
+    } else {
+      glyph
+    }
   }
 
   private var glyph: some View {
