@@ -56,8 +56,8 @@ actor PosterStore {
   }
 
   private static func frame(of url: URL, width: CGFloat) async -> UIImage? {
-    let media = LessonMedia.assets(url: url, seconds: 0)
-    let asset = media?.asset ?? AVURLAsset(url: url)
+    let media = await LessonMedia.assets(url: url, seconds: 0)
+    let asset = media ?? AVURLAsset(url: url)
     let seconds = await frameSecond(of: asset)
     let generator = AVAssetImageGenerator(asset: asset)
     generator.appliesPreferredTrackTransform = true
@@ -70,7 +70,6 @@ actor PosterStore {
     if frame == nil {
       frame = try? await generator.image(at: .zero)
     }
-    _ = media?.loader
     guard let frame else { return nil }
     return UIImage(cgImage: frame.image)
   }
@@ -80,7 +79,7 @@ actor PosterStore {
   private static func frameSecond(of asset: AVAsset) async -> Double {
     guard let duration = try? await asset.load(.duration) else { return 3 }
     let total = CMTimeGetSeconds(duration)
-    guard total.isFinite, total > 1 else { return 0 }
+    guard total.isFinite, total > 1, total != Double(LessonServer.unknownSeconds) else { return 3 }
     return min(20, max(1, total * 0.12))
   }
 }

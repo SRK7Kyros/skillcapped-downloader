@@ -8,7 +8,6 @@ struct PlayerScreen: View {
   @EnvironmentObject private var progress: ProgressStore
   @Environment(\.dismiss) private var dismiss
   @State private var player: AVPlayer?
-  @State private var loader: StreamAsset?
   @State private var waitingForCloud = false
   @State private var failure: String?
   @State private var preparing: Task<Void, Never>?
@@ -71,31 +70,29 @@ struct PlayerScreen: View {
   /// open: ask iCloud for it and play as soon as the bytes land.
   private func start() {
     guard player == nil, preparing == nil else { return }
-    guard CloudFile.needsDownload(lesson.url) else {
-      attach()
-      return
-    }
-    waitingForCloud = true
-    preparing = Task {
-      let ready = await CloudFile.waitUntilLocal(lesson.url)
-      await MainActor.run {
-        preparing = nil
+    let download = CloudFile.needsDownload(lesson.url)
+    waitingForCloud = download
+    preparing = Task { @MainActor in
+      if download {
+        let ready = await CloudFile.waitUntilLocal(lesson.url)
         waitingForCloud = false
-        if ready {
-          attach()
-        } else {
+        guard ready else {
+          preparing = nil
           failure = "That lesson could not be downloaded from iCloud. Open it in Files once, then try again."
+          return
         }
       }
+      let item = await LessonMedia.item(url: lesson.url, seconds: lesson.seconds)
+      guard !Task.isCancelled else { return }
+      attach(item)
+      preparing = nil
     }
   }
 
-  private func attach() {
+  private func attach(_ item: AVPlayerItem) {
     guard player == nil else { return }
-    let media = LessonMedia.item(url: lesson.url, seconds: lesson.seconds)
-    let player = AVPlayer(playerItem: media.item)
+    let player = AVPlayer(playerItem: item)
     player.allowsExternalPlayback = true
-    loader = media.loader
 
     let saved = progress.progress(for: lesson.progressKey)
     if let saved, WatchProgressMath.shouldResume(position: saved.position, duration: saved.duration) {
@@ -136,7 +133,6 @@ struct PlayerScreen: View {
     )
     player.pause()
     self.player = nil
-    loader = nil
   }
 }
 

@@ -22,6 +22,16 @@
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<!-- A downloaded lesson is MPEG-TS, which only the HLS stack plays, so it
+		     is served to the player from a loopback address. Nothing on the
+		     network is reachable through this: no arbitrary loads. -->
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+		<key>NSAllowsArbitraryLoadsForMedia</key>
+		<true/>
+	</dict>
 	<key>LSSupportsOpeningDocumentsInPlace</key>
 	<true/>
 	<key>UIFileSharingEnabled</key>

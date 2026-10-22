@@ -11,68 +11,92 @@ final class LessonMediaTests: XCTestCase {
     )
   }
 
-  func testAnOtherContainerIsHandedToThePlayerUntouched() throws {
+  func testAnOtherContainerIsHandedToThePlayerUntouched() async throws {
     let file = FileManager.default.temporaryDirectory
       .appendingPathComponent("plain-\(UUID().uuidString).mp4")
     XCTAssertTrue(FileManager.default.createFile(atPath: file.path, contents: Data([0])))
     defer { try? FileManager.default.removeItem(at: file) }
 
-    let media = LessonMedia.item(url: file, seconds: 60)
-    XCTAssertNil(media.loader)
-    let url = (media.item.asset as? AVURLAsset)?.url
+    let item = await LessonMedia.item(url: file, seconds: 60)
+
+    let url = (item.asset as? AVURLAsset)?.url
     XCTAssertEqual(url?.standardizedFileURL.path, file.standardizedFileURL.path)
   }
 
   func testThePlaylistStatesTheDurationAndEndsTheStream() {
-    let loader = StreamAsset(file: URL(fileURLWithPath: "/tmp/x.ts"), seconds: 754)
-    let playlist = loader.playlist
+    let playlist = LessonServer.playlist(token: "abc", port: 8731, seconds: 754)
     XCTAssertTrue(playlist.hasPrefix("#EXTM3U"))
     XCTAssertTrue(playlist.contains("#EXT-X-TARGETDURATION:754"))
     XCTAssertTrue(playlist.contains("#EXTINF:754.000,"))
-    XCTAssertTrue(playlist.contains("segment.ts"))
+    XCTAssertTrue(playlist.contains("http://127.0.0.1:8731/lesson/abc/segment.ts"))
     XCTAssertTrue(playlist.contains("#EXT-X-ENDLIST"))
   }
 
   func testAnUnknownDurationStillProducesAPlayablePlaylist() {
-    let loader = StreamAsset(file: URL(fileURLWithPath: "/tmp/x.ts"), seconds: 0)
-    XCTAssertTrue(loader.playlist.contains("#EXTINF:\(StreamAsset.unknownSeconds).000,"))
-    XCTAssertTrue(loader.playlist.contains("#EXT-X-ENDLIST"))
+    let playlist = LessonServer.playlist(token: "abc", port: 8731, seconds: 0)
+    XCTAssertTrue(playlist.contains("#EXTINF:\(LessonServer.unknownSeconds).000,"))
+    XCTAssertTrue(playlist.contains("#EXT-X-ENDLIST"))
   }
 
-  func testOnlyTransportStreamsGoThroughTheLoader() {
-    XCTAssertTrue(StreamAsset.handles(URL(fileURLWithPath: "/a/B.ts")))
-    XCTAssertTrue(StreamAsset.handles(URL(fileURLWithPath: "/a/B.TS")))
-    XCTAssertFalse(StreamAsset.handles(URL(fileURLWithPath: "/a/B.mp4")))
+  func testOnlyTransportStreamsGoThroughTheServer() {
+    XCTAssertTrue(LessonServer.offers(URL(fileURLWithPath: "/a/B.ts")))
+    XCTAssertTrue(LessonServer.offers(URL(fileURLWithPath: "/a/B.TS")))
+    XCTAssertFalse(LessonServer.offers(URL(fileURLWithPath: "/a/B.mp4")))
+  }
+
+  /// The server has to answer a playlist and a byte range before the player is
+  /// involved at all, so its own contract is checked without AVFoundation.
+  func testTheServerServesAPlaylistAndAByteRange() async throws {
+    let file = try fixture()
+    let size = try XCTUnwrap(FileManager.default.attributesOfItem(atPath: file.path)[.size] as? Int)
+    XCTAssertGreaterThan(size, 1024)
+
+    let playlistURL = try await LessonServer.shared.url(for: file, seconds: 3)
+    let (playlist, playlistResponse) = try await URLSession.shared.data(from: playlistURL)
+    XCTAssertEqual((playlistResponse as? HTTPURLResponse)?.statusCode, 200)
+    let text = try XCTUnwrap(String(data: playlist, encoding: .utf8))
+    XCTAssertTrue(text.contains("#EXT-X-ENDLIST"))
+    let segment = try XCTUnwrap(text.split(separator: "\n").first { $0.hasSuffix("segment.ts") })
+    let segmentURL = try XCTUnwrap(URL(string: String(segment).trimmingCharacters(in: .whitespaces)))
+
+    var request = URLRequest(url: segmentURL)
+    request.setValue("bytes=0-1023", forHTTPHeaderField: "Range")
+    let (bytes, segmentResponse) = try await URLSession.shared.data(for: request)
+    let response = try XCTUnwrap(segmentResponse as? HTTPURLResponse)
+    XCTAssertEqual(response.statusCode, 206)
+    XCTAssertEqual(response.value(forHTTPHeaderField: "Content-Range"), "bytes 0-1023/\(size)")
+    XCTAssertEqual(bytes.count, 1024)
+    XCTAssertEqual(bytes.first, UInt8(0x47), "a transport stream starts with its sync byte")
+
+    let missing = try XCTUnwrap(URL(string: "http://127.0.0.1:\(playlistURL.port ?? 0)/lesson/nope/segment.ts"))
+    let (_, gone) = try await URLSession.shared.data(from: missing)
+    XCTAssertEqual((gone as? HTTPURLResponse)?.statusCode, 404)
   }
 
   /// The proof that a downloaded lesson can play at all. iOS has no MPEG-TS
-  /// demuxer, so this duration only answers if the HLS stack accepted the
-  /// loader's playlist and read the bytes it served from disk.
-  ///
-  /// There is no audio track to count: an HLS variant is one muxed program, not
-  /// a pair of tracks, so the transport stream reaching the demuxer whole is
-  /// what makes its audio playable too.
-  func testTheLoaderMakesATransportStreamReadable() async throws {
-    let file = try fixture()
-    let media = LessonMedia.item(url: file, seconds: 3)
-    let loader = try XCTUnwrap(media.loader)
+  /// demuxer, so this duration only answers if the player read the playlist and
+  /// the bytes the server handed it.
+  func testATransportStreamPlaysThroughTheLocalServer() async throws {
+    let item = await LessonMedia.item(url: try fixture(), seconds: 3)
 
-    let ready = await waitForReady(media.item)
-    XCTAssertTrue(ready, "the player item never became ready; loader saw: \(loader.requests())")
+    let ready = await waitForReady(item)
+    XCTAssertTrue(ready, "the player item never became ready (\(item.error.map { String(describing: $0) } ?? "no error"))")
 
-    let duration = try await media.item.asset.load(.duration)
+    let duration = try await item.asset.load(.duration)
     XCTAssertEqual(duration.seconds, 3, accuracy: 1)
 
-    let video = try await media.item.asset.loadTracks(withMediaType: .video)
-    XCTAssertEqual(video.count, 1, "the loader served a stream without video; loader saw: \(loader.requests())")
+    let video = try await item.asset.loadTracks(withMediaType: .video)
+    XCTAssertEqual(video.count, 1, "the player read a stream without video")
+    let audio = try await item.asset.loadTracks(withMediaType: .audio)
+    XCTAssertEqual(audio.count, 1, "the player read a stream without its audio track")
+  }
 
-    let size = try XCTUnwrap(
-      FileManager.default.attributesOfItem(atPath: file.path)[.size] as? Int
-    )
-    XCTAssertTrue(
-      loader.requests().contains("<- \(size)/\(size)"),
-      "the player never read the whole transport stream (\(size) bytes); loader saw: \(loader.requests())"
-    )
+  func testAPosterFrameComesOutOfATransportStream() async throws {
+    let media = await LessonMedia.assets(url: try fixture(), seconds: 3)
+    let asset = try XCTUnwrap(media)
+    let generator = AVAssetImageGenerator(asset: asset)
+    let frame = try await generator.image(at: CMTime(seconds: 1, preferredTimescale: 600))
+    XCTAssertGreaterThan(frame.image.width, 0)
   }
 
   private func waitForReady(_ item: AVPlayerItem, seconds: Double = 20) async -> Bool {
@@ -86,12 +110,5 @@ final class LessonMediaTests: XCTestCase {
       }
     }
     return false
-  }
-
-  func testAPosterFrameComesOutOfATransportStream() async throws {
-    let media = try XCTUnwrap(LessonMedia.assets(url: try fixture(), seconds: 3))
-    let generator = AVAssetImageGenerator(asset: media.asset)
-    let frame = try await generator.image(at: CMTime(seconds: 1, preferredTimescale: 600))
-    XCTAssertGreaterThan(frame.image.width, 0)
   }
 }
