@@ -90,6 +90,32 @@ final class LibraryScannerTests: XCTestCase {
     XCTAssertNil(scan.videos.first?.itemId)
   }
 
+  func testALessonStillInICloudIsListedAtTheNameItRestoresTo() throws {
+    try touch("Courses/adc/Course One/.Farming [a1b2c3d4e5] 1080p.mp4.icloud", bytes: 24)
+
+    let scan = LibraryScanner.scan(root: root)
+
+    let course = try XCTUnwrap(scan.courses.first)
+    XCTAssertEqual(course.title, "Course One")
+    let lesson = try XCTUnwrap(course.lessons.first)
+    XCTAssertEqual(lesson.title, "Farming")
+    XCTAssertEqual(lesson.quality, "1080p")
+    XCTAssertEqual(lesson.itemId, "a1b2c3d4e5")
+    XCTAssertEqual(lesson.url.lastPathComponent, "Farming [a1b2c3d4e5] 1080p.mp4")
+    XCTAssertTrue(lesson.needsDownload, "a placeholder has no bytes to play")
+    XCTAssertEqual(lesson.bytes, 0, "the shadow file's size is not the lesson's")
+  }
+
+  func testAPlaceholderBesideItsDownloadedCopyAppearsOnce() throws {
+    try touch("Videos/adc/Ahri vs Zed [c3d4e5f6a7] 1080p.mp4", bytes: 900)
+    try touch("Videos/adc/.Ahri vs Zed [c3d4e5f6a7] 1080p.mp4.icloud", bytes: 24)
+
+    let scan = LibraryScanner.scan(root: root)
+
+    XCTAssertEqual(scan.videos.count, 1)
+    XCTAssertEqual(scan.videos.first?.bytes, 900)
+  }
+
   func testSumsTheBytesOnDisk() throws {
     try touch("Courses/adc/Course One/One [aaaaaa1111] 1080p.mp4", bytes: 1000)
     try touch("Videos/adc/Two [bbbbbb2222] 1080p.mp4", bytes: 24)

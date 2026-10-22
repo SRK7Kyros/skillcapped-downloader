@@ -38,6 +38,8 @@ enum FolderAccess {
 
     \(why) Your library still works: copy the downloader's folder into On My \
     iPhone › SkillCapped Local and pick it from the list below.
+
+    iOS \(UIDevice.current.systemVersion) · build \(Bundle.main.appVersion)
     """
   }
 }

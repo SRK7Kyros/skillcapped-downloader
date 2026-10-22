@@ -33,14 +33,23 @@ enum LibraryScanner {
     while let url = enumerator?.nextObject() as? URL {
       let components = url.standardizedFileURL.pathComponents
       guard components.count > rootComponents.count else { continue }
-      let relative = Array(components[rootComponents.count...])
+      var relative = Array(components[rootComponents.count...])
+      // iCloud Drive can hand a lesson over as its hidden shadow file
+      // (".Name [id] 1080p.mp4.icloud") while the bytes are still in the cloud.
+      // The lesson exists, so it is listed at the name it restores to and the
+      // bytes are asked for when it is played — never at scan time.
+      let placeholder = placeholderSibling(of: url)
+      if let placeholder {
+        relative[relative.count - 1] = placeholder.lastPathComponent
+      }
       guard !relative.contains(where: { $0.hasPrefix(".") }) else { continue }
-      guard DownloadName.playableExtensions.contains(url.pathExtension.lowercased()) else { continue }
+      let lessonURL = placeholder ?? url
+      guard DownloadName.playableExtensions.contains(lessonURL.pathExtension.lowercased()) else { continue }
 
       let values = try? url.resourceValues(forKeys: resourceKeys)
       guard values?.isRegularFile == true else { continue }
 
-      let name = DownloadName.parse(url.lastPathComponent)
+      let name = DownloadName.parse(lessonURL.lastPathComponent)
       let item = name.id.flatMap { catalog.item($0) }
       let bucket = bucket(for: relative)
       let folderRole = role(of: bucket)
@@ -49,15 +58,15 @@ enum LibraryScanner {
 
       let lesson = Lesson(
         id: relative.joined(separator: "/"),
-        url: url,
+        url: lessonURL,
         title: catalogTitle.isEmpty ? name.title : catalogTitle,
         role: role,
         quality: name.quality,
         seconds: item?.durationSec ?? 0,
-        bytes: Int64(values?.fileSize ?? 0),
+        bytes: placeholder == nil ? Int64(values?.fileSize ?? 0) : 0,
         modified: values?.contentModificationDate,
         itemId: item?.id,
-        needsDownload: needsDownload(values)
+        needsDownload: placeholder != nil || needsDownload(values)
       )
 
       switch bucket {
@@ -144,6 +153,20 @@ enum LibraryScanner {
   private static func needsDownload(_ values: URLResourceValues?) -> Bool {
     guard let values, values.isUbiquitousItem == true else { return false }
     return values.ubiquitousItemDownloadingStatus != .current
+  }
+
+  /// `.Name [id] 1080p.mp4.icloud` → `Name [id] 1080p.mp4`, the path iCloud
+  /// restores the lesson to once its bytes land. Every other name is nil, and so
+  /// is a shadow whose visible copy is already on disk — that lesson is listed
+  /// once, from the real file.
+  private static func placeholderSibling(of url: URL) -> URL? {
+    let name = url.lastPathComponent
+    guard name.hasPrefix("."), url.pathExtension.lowercased() == "icloud" else { return nil }
+    let visible = String(name.dropFirst().dropLast(".icloud".count))
+    guard !visible.isEmpty else { return nil }
+    let sibling = url.deletingLastPathComponent().appendingPathComponent(visible)
+    guard !FileManager.default.fileExists(atPath: sibling.path) else { return nil }
+    return sibling
   }
 
   private static func bucket(for relative: [String]) -> Bucket {
