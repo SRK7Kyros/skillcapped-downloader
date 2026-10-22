@@ -184,14 +184,19 @@ fetched the moment you play it.
   `SkillCappedLocal.entitlements` (ad-hoc signed into the IPA by CI so a
   re-signing tool keeps them), and a build whose profile lacks them reports the
   refusal in the sheet instead of dying. Opening a folder is also an API
-  distinction: the `asCopy:` initializer refuses a folder type outright
-  (`folder import is not supported`) **even when `asCopy:false` is passed**, so the
-  probe asks for the plain opening initializer, retries with the pre-iOS-14
-  open-mode call, and reports both refusals if neither is allowed —
-  `FolderPickerTests` builds it on every run, and `FolderPickerUITests` drives the
-  real button and insists the system picker appears (it does in the simulator,
-  screenshot attached to the run). A refusal names the iOS version and build it
-  came from, so a device-side refusal diagnoses itself. The fallback is unchanged:
+  distinction: a directory picker has to ask for `.folder` with **`asCopy:NO`
+  spelled out**, because the convenience `initForOpeningContentTypes:` resolves to
+  a copy-in (import) presentation that UIKit refuses for a folder — a device on
+  iOS 26.6.2 answered `folder import is not supported, use asCopy:false` to it. So
+  the probe asks for the explicit open-in-place pair first, retries with the
+  pre-iOS-14 open-mode call, and reports every refusal if none is allowed; each
+  attempt also points the picker at the app's Documents folder, since left on its
+  default root it opens on "Recents / No Recents" with Open disabled.
+  `FolderPickerTests` builds it on every run and pins that starting folder, and
+  `FolderPickerUITests` drives the real button and insists the system picker
+  appears (it does in the simulator, screenshot attached to the run). A refusal
+  names the iOS version and build it came from, so a device-side refusal diagnoses
+  itself. The fallback is unchanged:
   with `UIFileSharingEnabled` the app's own Documents folder is visible as **On My
   iPhone › SkillCapped Local**, and `LibraryLocator` lists every folder in there
   holding `Courses`, `Videos` or `Commentaries`. A single candidate is adopted on
