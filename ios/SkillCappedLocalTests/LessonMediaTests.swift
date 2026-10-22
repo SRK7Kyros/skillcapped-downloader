@@ -48,15 +48,44 @@ final class LessonMediaTests: XCTestCase {
   /// The proof that a downloaded lesson can play at all. iOS has no MPEG-TS
   /// demuxer, so this duration only answers if the HLS stack accepted the
   /// loader's playlist and read the bytes it served from disk.
+  ///
+  /// There is no audio track to count: an HLS variant is one muxed program, not
+  /// a pair of tracks, so the transport stream reaching the demuxer whole is
+  /// what makes its audio playable too.
   func testTheLoaderMakesATransportStreamReadable() async throws {
-    let media = LessonMedia.item(url: try fixture(), seconds: 3)
-    XCTAssertNotNil(media.loader)
+    let file = try fixture()
+    let media = LessonMedia.item(url: file, seconds: 3)
+    let loader = try XCTUnwrap(media.loader)
+
+    let ready = await waitForReady(media.item)
+    XCTAssertTrue(ready, "the player item never became ready; loader saw: \(loader.requests())")
 
     let duration = try await media.item.asset.load(.duration)
     XCTAssertEqual(duration.seconds, 3, accuracy: 1)
 
-    let audio = try await media.item.asset.loadTracks(withMediaType: .audio)
-    XCTAssertEqual(audio.count, 1, "the loader served a stream without its audio track")
+    let video = try await media.item.asset.loadTracks(withMediaType: .video)
+    XCTAssertEqual(video.count, 1, "the loader served a stream without video; loader saw: \(loader.requests())")
+
+    let size = try XCTUnwrap(
+      FileManager.default.attributesOfItem(atPath: file.path)[.size] as? Int
+    )
+    XCTAssertTrue(
+      loader.requests().contains("<- \(size)/\(size)"),
+      "the player never read the whole transport stream (\(size) bytes); loader saw: \(loader.requests())"
+    )
+  }
+
+  private func waitForReady(_ item: AVPlayerItem, seconds: Double = 20) async -> Bool {
+    let deadline = Date().addingTimeInterval(seconds)
+    while Date() < deadline {
+      switch item.status {
+      case .readyToPlay: return true
+      case .failed: return false
+      case .unknown: try? await Task.sleep(nanoseconds: 100_000_000)
+      @unknown default: return false
+      }
+    }
+    return false
   }
 
   func testAPosterFrameComesOutOfATransportStream() async throws {

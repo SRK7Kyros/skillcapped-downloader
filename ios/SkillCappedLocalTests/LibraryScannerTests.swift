@@ -72,12 +72,21 @@ final class LibraryScannerTests: XCTestCase {
   func testIgnoresStateFilesUnplayableMediaAndPlainFiles() throws {
     try touch(".skillcapped/catalog.json")
     try touch(".skillcapped/jobs.json")
-    try touch("Videos/mid/Cancelled [ffffffff] 1080p.ts")
+    try touch("Videos/mid/Cancelled [ffffffff] 1080p.mkv")
     try touch("Videos/mid/notes.txt")
 
     let scan = LibraryScanner.scan(root: root)
 
     XCTAssertTrue(scan.isEmpty)
+  }
+
+  func testATransportStreamDownloadedOnThePhoneIsALesson() throws {
+    try touch("Videos/mid/Ahri vs Zed [c3d4e5f6a7] 1080p.ts")
+
+    let scan = LibraryScanner.scan(root: root)
+
+    XCTAssertEqual(scan.videos.count, 1)
+    XCTAssertEqual(scan.videos.first?.itemId, "c3d4e5f6a7")
   }
 
   func testKeepsAVideoCopiedInByHand() throws {

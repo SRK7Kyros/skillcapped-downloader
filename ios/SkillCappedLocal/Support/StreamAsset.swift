@@ -89,20 +89,37 @@ final class StreamAsset: NSObject, AVAssetResourceLoaderDelegate {
 
   private let lock = NSLock()
   private var dropped: Set<ObjectIdentifier> = []
+  private var log: [String] = []
+
+  /// What the player asked this loader for, newest last. A failing test reads it
+  /// to tell "the player never asked" apart from "the player asked and the bytes
+  /// it wanted were not there".
+  func requests() -> String {
+    lock.lock()
+    defer { lock.unlock() }
+    return log.joined(separator: " | ")
+  }
+
+  private func note(_ line: String) {
+    lock.lock()
+    log.append(line)
+    if log.count > 40 {
+      log.removeFirst(log.count - 40)
+    }
+    lock.unlock()
+  }
 
   func resourceLoader(
     _ resourceLoader: AVAssetResourceLoader,
     shouldWaitForLoadingOfRequestedResource loadingRequest: AVAssetResourceLoadingRequest
   ) -> Bool {
     guard let url = loadingRequest.request.url else { return false }
-    #if DEBUG
     let ask = loadingRequest.dataRequest
-    print(
-      "[stream] \(url.lastPathComponent) offset=\(ask?.requestedOffset ?? -1) "
+    note(
+      "\(url.lastPathComponent) offset=\(ask?.requestedOffset ?? -1) "
         + "length=\(ask?.requestedLength ?? -1) "
         + "all=\(ask?.requestsAllDataToEndOfResource ?? false)"
     )
-    #endif
     if url.pathExtension.lowercased() == "m3u8" {
       let body = Data(playlist.utf8)
       loadingRequest.contentInformationRequest?.contentType = "public.m3u8"
@@ -185,6 +202,7 @@ final class StreamAsset: NSObject, AVAssetResourceLoaderDelegate {
       remaining -= Int64(bytes.count)
     }
     if !wasDropped(request) {
+      note("\(file.lastPathComponent) <- \(length - remaining)/\(length)")
       request.finishLoading()
     }
   }
