@@ -74,21 +74,24 @@ final class LessonMediaTests: XCTestCase {
   }
 
   /// The proof that a downloaded lesson can play at all. iOS has no MPEG-TS
-  /// demuxer, so this duration only answers if the player read the playlist and
-  /// the bytes the server handed it.
+  /// demuxer, so this only passes if the player read the playlist and decoded the
+  /// bytes the server handed it: a bare transport stream reports no video size
+  /// and its timeline never moves.
   func testATransportStreamPlaysThroughTheLocalServer() async throws {
     let item = await LessonMedia.item(url: try fixture(), seconds: 3)
+    let player = AVPlayer(playerItem: item)
+    player.play()
 
     let ready = await waitForReady(item)
     XCTAssertTrue(ready, "the player item never became ready (\(item.error.map { String(describing: $0) } ?? "no error"))")
+    XCTAssertGreaterThan(item.presentationSize.width, 0, "the player read a stream without video")
+    XCTAssertEqual(item.duration.seconds, 3, accuracy: 1)
 
-    let duration = try await item.asset.load(.duration)
-    XCTAssertEqual(duration.seconds, 3, accuracy: 1)
-
-    let video = try await item.asset.loadTracks(withMediaType: .video)
-    XCTAssertEqual(video.count, 1, "the player read a stream without video")
-    let audio = try await item.asset.loadTracks(withMediaType: .audio)
-    XCTAssertEqual(audio.count, 1, "the player read a stream without its audio track")
+    let started = player.currentTime().seconds
+    try await Task.sleep(nanoseconds: 1_500_000_000)
+    let advanced = player.currentTime().seconds - started
+    player.pause()
+    XCTAssertGreaterThan(advanced, 0.2, "playback did not advance (\(advanced)s)")
   }
 
   func testAPosterFrameComesOutOfATransportStream() async throws {

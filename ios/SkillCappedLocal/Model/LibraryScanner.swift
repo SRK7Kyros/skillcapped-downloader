@@ -65,7 +65,7 @@ enum LibraryScanner {
         seconds: item?.durationSec ?? 0,
         bytes: placeholder == nil ? Int64(values?.fileSize ?? 0) : 0,
         modified: values?.contentModificationDate,
-        itemId: item?.id,
+        itemId: item?.id ?? name.id,
         needsDownload: placeholder != nil || needsDownload(values)
       )
 
