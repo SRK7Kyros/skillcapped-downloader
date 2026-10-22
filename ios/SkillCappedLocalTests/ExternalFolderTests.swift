@@ -54,7 +54,8 @@ final class ExternalFolderTests: XCTestCase {
 
     let reopened = LibraryStore()
     XCTAssertEqual(reopened.rootName, "SkillCapped", "the bookmark should survive a relaunch")
-    XCTAssertEqual(try await waitForScan(reopened).lessonCount, 1)
+    let rescanned = try await waitForScan(reopened)
+    XCTAssertEqual(rescanned.lessonCount, 1)
   }
 
   func testPickingAFolderThatOnlyContainsTheLibraryAdoptsTheLibrary() async throws {
@@ -68,6 +69,7 @@ final class ExternalFolderTests: XCTestCase {
     store.choose(scratch)
 
     XCTAssertEqual(store.rootName, "SkillCapped", "the library inside the pick is the library")
-    XCTAssertEqual(try await waitForScan(store).lessonCount, 1)
+    let scan = try await waitForScan(store)
+    XCTAssertEqual(scan.lessonCount, 1)
   }
 }
