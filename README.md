@@ -155,10 +155,11 @@ still adds it to the bulk selection.
 
 ## iOS app
 
-`ios/` is a read-only phone companion: point it at the folder the downloader
-writes to (Files → pick folder) and it becomes a browsable library with real
-cover art and native playback. Nothing is downloaded, copied or uploaded — the
-app scans the folder in place and plays the files it finds.
+`ios/` is a read-only phone companion: copy the folder the downloader writes to
+into the app's folder in Files (On My iPhone › SkillCapped Local), and it becomes
+a browsable library with real cover art and native playback. Nothing is
+downloaded, copied or uploaded — the app scans the folder in place and plays the
+files it finds.
 
 - **What it reads.** `<title> [<uuid>] <quality>.mp4` under
   `Courses/<role>/<course>/`, `Videos/<role>/<category>/` and
@@ -173,10 +174,18 @@ app scans the folder in place and plays the files it finds.
 - **Playback.** `AVPlayerViewController`, so picture in picture, AirPlay and
   subtitle tracks come for free; the position of every file is remembered and
   resumed above five seconds.
-- **Folder access.** The picker hands back a security-scoped URL, remembered as a
-  bookmark, so the library survives relaunches. `Change folder` and
-  `Forget folder` live in the settings sheet, which also reports what was scanned
-  and how large it is.
+- **Folder access.** Not the system picker, deliberately: `UIDocumentPickerViewController`
+  requires the iCloud Documents entitlement, a free Apple ID cannot grant one, and
+  a sideloaded build is killed by `Application initializing document picker is
+  missing the iCloud entitlement` the moment it opens one. Instead the app reads
+  its own Documents folder — Files shows it as **On My iPhone › SkillCapped
+  Local** (`UIFileSharingEnabled`) — and `LibraryLocator` lists every folder in
+  there holding `Courses`, `Videos` or `Commentaries`. A single folder is adopted
+  on launch; several are offered in the `Library folder` sheet, which also carries
+  the copy-in steps and `Forget folder`. The last choice is remembered as a path
+  relative to Documents, and a folder opened from another app still arrives as a
+  security-scoped bookmark. `Settings` reports what was scanned and how large it
+  is.
 - **Build.** XcodeGen generates the project from `ios/project.yml`
   (`brew install xcodegen && cd ios && xcodegen generate`). iPhone and iPad,
   iOS 17+. `.github/workflows/ios.yml` runs the unit and UI suites on a

@@ -24,7 +24,7 @@ struct RootView: View {
               Image(systemName: "folder")
             }
             .disabled(!store.hasFolder)
-            .accessibilityLabel("Change folder")
+            .accessibilityLabel("Library folder")
           }
           ToolbarItem(placement: .topBarTrailing) {
             Button {
@@ -37,8 +37,11 @@ struct RootView: View {
         }
     }
     .tint(Palette.brand)
+    .onOpenURL { url in
+      store.choose(url)
+    }
     .sheet(isPresented: $picking) {
-      FolderPicker { store.choose($0) }
+      LibraryLocationView()
     }
     .sheet(isPresented: $settings) {
       SettingsView()
@@ -80,7 +83,7 @@ private struct WelcomeView: View {
         .font(.largeTitle.weight(.bold))
         .foregroundStyle(Palette.ink)
 
-      Text("Pick the folder the downloader writes to — the one holding Courses, Videos and Commentaries. The app reads it in place: nothing is copied, and it never downloads anything.")
+      Text("Copy the folder the downloader writes to — the one holding Courses, Videos and Commentaries — into this app's folder in Files (On My iPhone › SkillCapped Local). The app reads it in place: nothing is copied again by the app, and it never downloads anything.")
         .font(.subheadline)
         .foregroundStyle(Palette.inkDim)
         .fixedSize(horizontal: false, vertical: true)
@@ -105,7 +108,7 @@ private struct WelcomeView: View {
       }
 
       Button(action: pick) {
-        Label("Choose folder", systemImage: "folder.badge.plus")
+        Label("Choose library folder", systemImage: "folder.badge.plus")
           .font(.headline)
           .frame(maxWidth: .infinity)
           .padding(.vertical, 14)

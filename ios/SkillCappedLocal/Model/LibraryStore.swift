@@ -6,11 +6,18 @@ final class LibraryStore: ObservableObject {
   @Published private(set) var scanning = false
   @Published private(set) var message: String?
   @Published private(set) var rootName: String?
+  /// Library folders the app can already read, i.e. what it found in Documents.
+  @Published private(set) var candidates: [URL] = []
 
   private static let bookmarkKey = "library.bookmark"
+  private static let pathKey = "library.relativePath"
+  private let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
   private var scoped: URL?
 
   var hasFolder: Bool { scoped != nil }
+  /// "On My iPhone › SkillCapped Local" — the one folder the app may read without
+  /// the iCloud entitlement a sideloaded build cannot have.
+  var documentsURL: URL { documents }
 
   init() {
     if let demo = DemoLibrary.root() {
@@ -24,27 +31,51 @@ final class LibraryStore: ObservableObject {
     scoped?.stopAccessingSecurityScopedResource()
   }
 
+  /// Reopen the last library, or adopt the only one waiting in Documents.
   func restore() {
-    guard let data = UserDefaults.standard.data(forKey: Self.bookmarkKey) else { return }
-    var stale = false
-    guard let url = try? URL(resolvingBookmarkData: data, options: [], relativeTo: nil, bookmarkDataIsStale: &stale) else {
-      UserDefaults.standard.removeObject(forKey: Self.bookmarkKey)
-      return
+    if attachSavedPath() { return }
+    if attachBookmark() { return }
+    refreshCandidates()
+    if candidates.count == 1, let only = candidates.first {
+      choose(only)
+    } else if candidates.count > 1 {
+      message = "\(candidates.count) library folders are waiting — choose one."
     }
-    attach(url, persist: stale)
   }
 
+  func refreshCandidates() {
+    candidates = LibraryLocator.libraries(in: documents)
+  }
+
+  /// Point the library at `url`. A folder inside the app's Documents needs no
+  /// bookmark — the sandbox already grants it — while anything handed to us from
+  /// outside (an opened folder, an older saved bookmark) is remembered as a
+  /// security-scoped bookmark.
   func choose(_ url: URL) {
+    let target = url.standardizedFileURL
+    if isInsideDocuments(target) {
+      UserDefaults.standard.set(relativePath(of: target), forKey: Self.pathKey)
+      UserDefaults.standard.removeObject(forKey: Self.bookmarkKey)
+      attach(target, persist: false)
+      return
+    }
     guard let bookmark = try? url.bookmarkData(options: [], includingResourceValuesForKeys: nil, relativeTo: nil) else {
-      message = "That folder could not be remembered. Pick it again after relaunching."
+      message = "That folder could not be remembered. Copy it into the app instead: Files › On My iPhone › SkillCapped Local."
       return
     }
     UserDefaults.standard.set(bookmark, forKey: Self.bookmarkKey)
+    UserDefaults.standard.removeObject(forKey: Self.pathKey)
     attach(url, persist: false)
+  }
+
+  func isCurrent(_ url: URL) -> Bool {
+    guard let scoped else { return false }
+    return scoped.standardizedFileURL.path == url.standardizedFileURL.path
   }
 
   func forget() {
     UserDefaults.standard.removeObject(forKey: Self.bookmarkKey)
+    UserDefaults.standard.removeObject(forKey: Self.pathKey)
     scoped?.stopAccessingSecurityScopedResource()
     scoped = nil
     scan = nil
@@ -70,16 +101,61 @@ final class LibraryStore: ObservableObject {
     }
   }
 
+  private func attachSavedPath() -> Bool {
+    guard let relative = UserDefaults.standard.string(forKey: Self.pathKey) else { return false }
+    let url = relative.isEmpty ? documents : documents.appendingPathComponent(relative, isDirectory: true)
+    guard FileManager.default.isReadableFile(atPath: url.path) else {
+      UserDefaults.standard.removeObject(forKey: Self.pathKey)
+      return false
+    }
+    attach(url, persist: false)
+    return true
+  }
+
+  private func attachBookmark() -> Bool {
+    guard let data = UserDefaults.standard.data(forKey: Self.bookmarkKey) else { return false }
+    var stale = false
+    guard let url = try? URL(resolvingBookmarkData: data, options: [], relativeTo: nil, bookmarkDataIsStale: &stale) else {
+      UserDefaults.standard.removeObject(forKey: Self.bookmarkKey)
+      return false
+    }
+    attach(url, persist: stale)
+    return true
+  }
+
   private func attach(_ url: URL, persist: Bool) {
     let started = url.startAccessingSecurityScopedResource()
     scoped = url
-    rootName = url.lastPathComponent
+    rootName = displayName(for: url)
     if persist, let bookmark = try? url.bookmarkData(options: [], includingResourceValuesForKeys: nil, relativeTo: nil) {
       UserDefaults.standard.set(bookmark, forKey: Self.bookmarkKey)
     }
     if !started, !FileManager.default.isReadableFile(atPath: url.path) {
-      message = "This folder is no longer available. Pick it again to restore access."
+      message = "This folder is no longer available. Add it again through the library sheet."
     }
     rescan()
+  }
+
+  /// Files shows the app's own Documents folder under the app's name, so that is
+  /// what the sheet calls it; anything else keeps its own name.
+  private func displayName(for url: URL) -> String {
+    isSamePath(url, documents) ? "SkillCapped Local" : url.lastPathComponent
+  }
+
+  private func isInsideDocuments(_ url: URL) -> Bool {
+    let root = documents.standardizedFileURL.path
+    let path = url.standardizedFileURL.path
+    return path == root || path.hasPrefix(root + "/")
+  }
+
+  private func relativePath(of url: URL) -> String {
+    let root = documents.standardizedFileURL.path
+    let path = url.standardizedFileURL.path
+    guard path.hasPrefix(root + "/") else { return "" }
+    return String(path.dropFirst(root.count + 1))
+  }
+
+  private func isSamePath(_ lhs: URL, _ rhs: URL) -> Bool {
+    lhs.standardizedFileURL.path == rhs.standardizedFileURL.path
   }
 }

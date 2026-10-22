@@ -9,7 +9,7 @@ struct SettingsView: View {
   var body: some View {
     NavigationStack {
       Form {
-        Section("Folder") {
+        Section {
           LabeledContent("Name", value: store.rootName ?? "—")
           if let path = store.scan?.rootPath {
             Text(path)
@@ -17,9 +17,13 @@ struct SettingsView: View {
               .foregroundStyle(Palette.inkFaint)
               .textSelection(.enabled)
           }
-          Button("Change folder") { picking = true }
+          Button("Choose folder") { picking = true }
           Button("Forget folder", role: .destructive) { store.forget() }
             .disabled(!store.hasFolder)
+        } header: {
+          Text("Folder")
+        } footer: {
+          Text("Library folders live in Files › On My iPhone › SkillCapped Local.")
         }
 
         Section("Library") {
@@ -52,10 +56,7 @@ struct SettingsView: View {
         }
       }
       .sheet(isPresented: $picking) {
-        FolderPicker { url in
-          store.choose(url)
-          dismiss()
-        }
+        LibraryLocationView()
       }
     }
     .tint(Palette.brand)
