@@ -203,15 +203,16 @@ on the phone itself, into the same folders the desktop build writes.
   the catalogue loaded still remembers where you stopped and still matches a
   download made on this phone.
 - **Cover art.** A frame pulled out of each lesson (`AVAssetImageGenerator`), a
-  little way in, cached under `Caches/posters`. Only the containers this platform
-  can read yield one: an `.mp4` from the desktop does, a downloaded `.ts` does
-  not — the player reads a transport stream through the HLS stack, and an HLS
-  asset reports **no tracks**, so the generator has nothing to decode and never
-  answers (measured; the same stream plays). A `.ts` is therefore not asked for a
-  frame at all, and every other request is raced against a budget, because a
-  generator that never returns would otherwise leave a card waiting forever. A
-  file that yields no frame falls back to a gradient seeded from its title, so a
-  card never looks broken.
+  little way in, cached under `Caches/posters`. An `.mp4` from the desktop yields
+  one; a downloaded `.ts` does not, because the generator never answers for a
+  lesson served as HLS (measured in CI — the same stream plays through the
+  player). Whether that is a limit of the platform or of this app's own
+  one-segment playlist is **not settled**: HLS thumbnails normally do work on
+  iOS, and a raw `.ts` reporting zero tracks is a separate measurement. Until it
+  is, a `.ts` is not asked for a frame at all and every other request is raced
+  against a budget, because a generator that never returns would otherwise leave
+  a card waiting forever. A file that yields no frame falls back to a gradient
+  seeded from its title, so a card never looks broken.
 - **Playback.** `AVPlayerViewController`, so picture in picture, AirPlay and
   subtitle tracks come for free; the position of every file is remembered and
   resumed above five seconds. A downloaded `.ts` is played by handing the player
