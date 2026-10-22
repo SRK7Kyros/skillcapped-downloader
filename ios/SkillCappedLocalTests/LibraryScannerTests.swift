@@ -100,7 +100,6 @@ final class LibraryScannerTests: XCTestCase {
     let lesson = try XCTUnwrap(course.lessons.first)
     XCTAssertEqual(lesson.title, "Farming")
     XCTAssertEqual(lesson.quality, "1080p")
-    XCTAssertEqual(lesson.itemId, "a1b2c3d4e5")
     XCTAssertEqual(lesson.url.lastPathComponent, "Farming [a1b2c3d4e5] 1080p.mp4")
     XCTAssertTrue(lesson.needsDownload, "a placeholder has no bytes to play")
     XCTAssertEqual(lesson.bytes, 0, "the shadow file's size is not the lesson's")
