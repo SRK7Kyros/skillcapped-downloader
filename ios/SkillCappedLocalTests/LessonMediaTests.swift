@@ -1,4 +1,5 @@
 import AVFoundation
+import UIKit
 import XCTest
 
 @testable import SkillCappedLocal
@@ -94,12 +95,14 @@ final class LessonMediaTests: XCTestCase {
     XCTAssertGreaterThan(advanced, 0.2, "playback did not advance (\(advanced)s)")
   }
 
+  /// Cover art is what a library card shows before anything is played, so it is
+  /// taken through the same loopback playlist the player uses — and the request is
+  /// given a budget, because a generator that never returns would leave the card on
+  /// its gradient with nothing to report.
   func testAPosterFrameComesOutOfATransportStream() async throws {
-    let media = await LessonMedia.assets(url: try fixture(), seconds: 3)
-    let asset = try XCTUnwrap(media)
-    let generator = AVAssetImageGenerator(asset: asset)
-    let frame = try await generator.image(at: CMTime(seconds: 1, preferredTimescale: 600))
-    XCTAssertGreaterThan(frame.image.width, 0)
+    let poster = await PosterStore.shared.poster(for: try fixture(), width: 320)
+    let image = try XCTUnwrap(poster, "the generator never answered for a transport stream")
+    XCTAssertGreaterThan(image.size.width, 0)
   }
 
   private func waitForReady(_ item: AVPlayerItem, seconds: Double = 20) async -> Bool {

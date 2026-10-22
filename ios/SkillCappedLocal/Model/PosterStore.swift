@@ -7,6 +7,8 @@ import UIKit
 actor PosterStore {
   static let shared = PosterStore()
 
+  private static let frameBudget: Double = 10
+
   private var memory: [String: UIImage] = [:]
   private var running: [String: Task<UIImage?, Never>] = [:]
   private let directory: URL
@@ -66,12 +68,24 @@ actor PosterStore {
     generator.requestedTimeToleranceAfter = CMTime(seconds: 2, preferredTimescale: 600)
 
     let time = CMTime(seconds: seconds, preferredTimescale: 600)
-    var frame = try? await generator.image(at: time)
+    var frame = await oneFrame(from: generator, at: time)
     if frame == nil {
-      frame = try? await generator.image(at: .zero)
+      frame = await oneFrame(from: generator, at: .zero)
     }
-    guard let frame else { return nil }
-    return UIImage(cgImage: frame.image)
+    return frame.map { UIImage(cgImage: $0) }
+  }
+
+  /// One frame, or nothing once the budget is spent. An HLS request can sit
+  /// unanswered for good — measured in CI, where the same generator never returned
+  /// — and the artwork is best effort, so the card draws its gradient instead of
+  /// leaving a cell that waits forever.
+  private static func oneFrame(from generator: AVAssetImageGenerator, at time: CMTime) async -> CGImage? {
+    let promise = Promise<CGImage>()
+    generator.generateCGImagesAsynchronously(forTimes: [NSValue(time: time)]) { _, frame, _, _, _ in
+      promise.resolve(frame)
+    }
+    DispatchQueue.global().asyncAfter(deadline: .now() + frameBudget) { promise.resolve(nil) }
+    return await promise.value
   }
 
   /// A frame a little way in, past title cards, capped so long lessons do not
@@ -81,5 +95,41 @@ actor PosterStore {
     let total = CMTimeGetSeconds(duration)
     guard total.isFinite, total > 1, total != Double(LessonServer.unknownSeconds) else { return 3 }
     return min(20, max(1, total * 0.12))
+  }
+}
+
+/// A single answer, from whichever finishes first, with the loser ignored.
+private final class Promise<T>: @unchecked Sendable {
+  private let lock = NSLock()
+  private var waiting: CheckedContinuation<T?, Never>?
+  private var settled: T??
+
+  func resolve(_ value: T?) {
+    lock.lock()
+    if let waiting {
+      self.waiting = nil
+      lock.unlock()
+      waiting.resume(returning: value)
+      return
+    }
+    if case .none = settled {
+      settled = .some(value)
+    }
+    lock.unlock()
+  }
+
+  var value: T? {
+    get async {
+      await withCheckedContinuation { continuation in
+        lock.lock()
+        if let settled {
+          lock.unlock()
+          continuation.resume(returning: settled)
+        } else {
+          waiting = continuation
+          lock.unlock()
+        }
+      }
+    }
   }
 }
