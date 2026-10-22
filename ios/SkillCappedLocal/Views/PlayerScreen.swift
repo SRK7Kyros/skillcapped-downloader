@@ -5,11 +5,13 @@ import SwiftUI
 struct PlayerScreen: View {
   let lesson: Lesson
 
+  @EnvironmentObject private var progress: ProgressStore
   @Environment(\.dismiss) private var dismiss
   @State private var player: AVPlayer?
   @State private var waitingForCloud = false
   @State private var failure: String?
   @State private var preparing: Task<Void, Never>?
+  @State private var observer: Any?
 
   var body: some View {
     ZStack {
@@ -59,7 +61,8 @@ struct PlayerScreen: View {
     .onAppear(perform: start)
     .onDisappear(perform: stop)
     .onReceive(NotificationCenter.default.publisher(for: .AVPlayerItemDidPlayToEndTime)) { _ in
-      Playback.clear(for: lesson)
+      let total = player?.currentItem?.duration.seconds ?? 0
+      progress.markCompleted(key: lesson.progressKey, duration: total.isFinite ? total : 0)
     }
   }
 
@@ -92,10 +95,24 @@ struct PlayerScreen: View {
     let player = AVPlayer(playerItem: item)
     player.allowsExternalPlayback = true
 
-    let resume = Playback.saved(lesson)
-    if resume > 5 {
-      player.seek(to: CMTime(seconds: resume, preferredTimescale: 600))
+    let saved = progress.progress(for: lesson.progressKey)
+    if let saved, WatchProgressMath.shouldResume(position: saved.position, duration: saved.duration) {
+      player.seek(to: CMTime(seconds: saved.position, preferredTimescale: 600))
     }
+
+    let key = lesson.progressKey
+    let store = progress
+    observer = player.addPeriodicTimeObserver(
+      forInterval: CMTime(seconds: 5, preferredTimescale: 600),
+      queue: .main
+    ) { time in
+      let total = player.currentItem?.duration.seconds ?? 0
+      let seconds = time.seconds
+      Task { @MainActor in
+        store.record(key: key, position: seconds, duration: total.isFinite ? total : 0)
+      }
+    }
+
     player.play()
     self.player = player
   }
@@ -103,8 +120,18 @@ struct PlayerScreen: View {
   private func stop() {
     preparing?.cancel()
     preparing = nil
+
     guard let player else { return }
-    Playback.save(player.currentTime().seconds, for: lesson)
+    if let observer {
+      player.removeTimeObserver(observer)
+      self.observer = nil
+    }
+    let total = player.currentItem?.duration.seconds ?? 0
+    progress.record(
+      key: lesson.progressKey,
+      position: player.currentTime().seconds,
+      duration: total.isFinite ? total : 0
+    )
     player.pause()
     self.player = nil
   }

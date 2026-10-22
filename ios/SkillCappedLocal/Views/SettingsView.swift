@@ -2,6 +2,8 @@ import SwiftUI
 
 struct SettingsView: View {
   @EnvironmentObject private var store: LibraryStore
+  @EnvironmentObject private var downloads: DownloadManager
+  @EnvironmentObject private var prefs: PreferencesStore
   @Environment(\.dismiss) private var dismiss
 
   @State private var picking = false
@@ -25,6 +27,24 @@ struct SettingsView: View {
           Text("Folder")
         } footer: {
           Text("Any folder works — iCloud Drive, On My iPad, another app's folder — as does one inside Files › On My iPhone › SkillCapped Local.")
+        }
+
+        Section {
+          NavigationLink {
+            QualityOrderView()
+          } label: {
+            LabeledContent("Quality", value: prefs.qualityPriority.first ?? "—")
+          }
+          LabeledContent("In the queue", value: "\(downloads.activeCount)")
+          LabeledContent("On disk", value: Format.bytes(downloads.readyBytes))
+          Text(downloads.root.path)
+            .font(.caption2)
+            .foregroundStyle(Palette.inkFaint)
+            .textSelection(.enabled)
+        } header: {
+          Text("Downloads")
+        } footer: {
+          Text("Discover fetches the site's own catalogue and pulls a lesson straight onto the phone; it lands in the library folder above.")
         }
 
         Section("Library") {

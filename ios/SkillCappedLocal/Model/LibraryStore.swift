@@ -21,6 +21,9 @@ final class LibraryStore: ObservableObject {
   /// "On My iPhone › SkillCapped Local" — the one folder the app may always read,
   /// whatever the system picker decides to allow.
   var documentsURL: URL { documents }
+  /// Where a download is written: the library the app is pointed at, so a
+  /// finished lesson lands beside the ones already there.
+  var downloadRoot: URL { scoped ?? documents }
 
   init() {
     if let demo = DemoLibrary.root() {

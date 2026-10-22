@@ -6,7 +6,7 @@ on:
       version:
         description: Marketing version baked into the IPA
         required: false
-        default: "1.2.5"
+        default: "1.3.0"
   push:
     paths:
       - "ios/**"
@@ -25,7 +25,7 @@ jobs:
 
       - name: Resolve version
         id: version
-        run: echo "version=${{ inputs.version || '1.2.5' }}" >> "$GITHUB_OUTPUT"
+        run: echo "version=${{ inputs.version || '1.3.0' }}" >> "$GITHUB_OUTPUT"
 
       - name: Install XcodeGen
         run: brew install xcodegen

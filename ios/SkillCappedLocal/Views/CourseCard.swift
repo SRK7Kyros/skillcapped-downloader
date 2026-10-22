@@ -58,6 +58,7 @@ struct CourseCard: View {
 struct LessonRow: View {
   let lesson: Lesson
   var index: Int?
+  var progress: Double?
 
   var body: some View {
     HStack(spacing: 12) {
@@ -101,6 +102,12 @@ struct LessonRow: View {
         }
         .font(.caption2)
         .foregroundStyle(Palette.inkFaint)
+
+        if let progress, progress > 0.01 {
+          ProgressView(value: min(progress, 1))
+            .tint(Palette.brand)
+            .frame(maxWidth: 140)
+        }
       }
 
       Spacer(minLength: 0)

@@ -1,0 +1,117 @@
+import SwiftUI
+
+/// Cover art for a catalogue row, which the site hosts as a plain image URL —
+/// so the phone can show a course before a single byte of video is downloaded.
+/// The gradient is the same deterministic fallback a local poster uses.
+struct RemotePoster: View {
+  let url: URL?
+  var seed: String
+
+  var body: some View {
+    ZStack {
+      LinearGradient(
+        colors: Palette.gradient(for: seed),
+        startPoint: .topLeading,
+        endPoint: .bottomTrailing
+      )
+
+      if let url {
+        AsyncImage(url: url) { phase in
+          switch phase {
+          case let .success(image):
+            image
+              .resizable()
+              .scaledToFill()
+          case .failure:
+            glyph
+          case .empty:
+            ProgressView()
+              .tint(.white.opacity(0.4))
+          @unknown default:
+            glyph
+          }
+        }
+      } else {
+        glyph
+      }
+    }
+    .clipped()
+  }
+
+  private var glyph: some View {
+    Image(systemName: "play.circle.fill")
+      .font(.system(size: 28, weight: .semibold))
+      .foregroundStyle(.white.opacity(0.22))
+  }
+}
+
+/// The download affordance every catalogue row carries, in one place so the
+/// states cannot drift apart between the grid and the course screen.
+enum RowState: Equatable {
+  case remote
+  case queued
+  case downloading(Double)
+  case remuxing
+  case onDisk
+  case failed(String)
+
+  var glyph: String {
+    switch self {
+    case .remote: return "arrow.down.circle"
+    case .queued: return "clock"
+    case .downloading, .remuxing: return "arrow.down.circle.fill"
+    case .onDisk: return "checkmark.circle.fill"
+    case .failed: return "exclamationmark.triangle.fill"
+    }
+  }
+
+  var tint: Color {
+    switch self {
+    case .remote: return Palette.inkDim
+    case .queued, .downloading, .remuxing: return Palette.brand
+    case .onDisk: return Palette.brand
+    case .failed: return Palette.warn
+    }
+  }
+
+  var label: String {
+    switch self {
+    case .remote: return "Download"
+    case .queued: return "Queued"
+    case let .downloading(fraction): return "\(Int(fraction * 100))%"
+    case .remuxing: return "Finishing"
+    case .onDisk: return "On disk"
+    case .failed: return "Retry"
+    }
+  }
+
+  var isBusy: Bool {
+    switch self {
+    case .queued, .downloading, .remuxing: return true
+    default: return false
+    }
+  }
+}
+
+/// What a catalogue id is doing right now: on disk (either the app's own queue or
+/// a file that was already in the library), in the queue, or still remote.
+@MainActor
+enum CatalogState {
+  static func of(
+    _ id: String,
+    downloads: DownloadManager,
+    onDisk: Set<String>
+  ) -> RowState {
+    if let task = downloads.task(for: id) {
+      switch task.state {
+      case .queued, .paused: return .queued
+      case .downloading: return .downloading(task.fraction)
+      case .remuxing: return .remuxing
+      case .ready: return .onDisk
+      case .failed: return .failed(task.error ?? "Failed")
+      case .cancelled: break
+      }
+    }
+    return onDisk.contains(id) ? .onDisk : .remote
+  }
+}

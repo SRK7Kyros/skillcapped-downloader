@@ -52,4 +52,19 @@ struct LibraryScan: Equatable {
   }
 
   var isEmpty: Bool { courses.isEmpty && videos.isEmpty && commentaries.isEmpty }
+
+  /// Every catalogue id the library already holds, so a remote row can say
+  /// "on disk" whether the file came from this phone or from the desktop.
+  var onDiskIds: Set<String> {
+    var ids: Set<String> = []
+    for lesson in videos + commentaries {
+      if let id = lesson.itemId { ids.insert(id) }
+    }
+    for course in courses {
+      for lesson in course.lessons {
+        if let id = lesson.itemId { ids.insert(id) }
+      }
+    }
+    return ids
+  }
 }

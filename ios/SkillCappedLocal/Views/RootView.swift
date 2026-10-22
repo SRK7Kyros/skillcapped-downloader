@@ -3,11 +3,61 @@ import SwiftUI
 struct RootView: View {
   @EnvironmentObject private var store: LibraryStore
   @EnvironmentObject private var player: PlayerCoordinator
+  @EnvironmentObject private var downloads: DownloadManager
+  @EnvironmentObject private var prefs: PreferencesStore
 
+  @State private var tab: Tab = .library
   @State private var picking = false
   @State private var settings = false
 
+  private enum Tab: Hashable {
+    case library
+    case discover
+    case downloads
+  }
+
   var body: some View {
+    TabView(selection: $tab) {
+      library
+        .tabItem { Label("Library", systemImage: "books.vertical") }
+        .tag(Tab.library)
+
+      DiscoverView()
+        .tabItem { Label("Discover", systemImage: "sparkles") }
+        .tag(Tab.discover)
+
+      DownloadsView()
+        .tabItem { Label("Downloads", systemImage: "arrow.down.circle") }
+        .badge(downloads.activeCount)
+        .tag(Tab.downloads)
+    }
+    .tint(Palette.brand)
+    .onOpenURL { url in
+      store.choose(url)
+    }
+    .sheet(isPresented: $picking) {
+      LibraryLocationView()
+    }
+    .sheet(isPresented: $settings) {
+      SettingsView()
+    }
+    .fullScreenCover(item: $player.lesson) { lesson in
+      PlayerScreen(lesson: lesson)
+    }
+    .onAppear(perform: sync)
+    .onChange(of: store.rootName) { _, _ in sync() }
+    .onChange(of: prefs.qualityPriority) { _, order in downloads.qualityPriority = order }
+  }
+
+  /// Downloads land in the library the app is pointed at, so a finished lesson
+  /// is where the browser already looks.
+  private func sync() {
+    downloads.root = store.downloadRoot
+    downloads.qualityPriority = prefs.qualityPriority
+    downloads.onChange = { [store] in store.rescan() }
+  }
+
+  private var library: some View {
     NavigationStack {
       content
         .background(Palette.bg.ignoresSafeArea())
@@ -35,19 +85,6 @@ struct RootView: View {
             .accessibilityLabel("Library settings")
           }
         }
-    }
-    .tint(Palette.brand)
-    .onOpenURL { url in
-      store.choose(url)
-    }
-    .sheet(isPresented: $picking) {
-      LibraryLocationView()
-    }
-    .sheet(isPresented: $settings) {
-      SettingsView()
-    }
-    .fullScreenCover(item: $player.lesson) { lesson in
-      PlayerScreen(lesson: lesson)
     }
   }
 
@@ -90,7 +127,7 @@ private struct WelcomeView: View {
 
       VStack(alignment: .leading, spacing: 10) {
         bullet("play.rectangle.fill", "Native playback", "AVPlayer, with picture in picture, AirPlay and resume.")
-        bullet("photo.fill", "Real cover art", "A frame of each lesson, cached on the phone.")
+        bullet("arrow.down.circle.fill", "Download in the app", "Discover the catalogue and pull a course straight onto the phone.")
         bullet("icloud.fill", "Cloud or local", "A folder in iCloud Drive is read the same way; a lesson is fetched only when you play it.")
       }
 

@@ -4,6 +4,7 @@ struct CourseView: View {
   let course: Course
 
   @EnvironmentObject private var player: PlayerCoordinator
+  @EnvironmentObject private var progress: ProgressStore
 
   var body: some View {
     ScrollView {
@@ -15,7 +16,11 @@ struct CourseView: View {
             Button {
               player.play(lesson)
             } label: {
-              LessonRow(lesson: lesson, index: index + 1)
+              LessonRow(
+                lesson: lesson,
+                index: index + 1,
+                progress: progress.fraction(for: lesson.progressKey)
+              )
             }
             .buttonStyle(.plain)
 

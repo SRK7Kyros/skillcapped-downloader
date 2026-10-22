@@ -5,6 +5,7 @@ struct BrowseView: View {
 
   @EnvironmentObject private var store: LibraryStore
   @EnvironmentObject private var player: PlayerCoordinator
+  @EnvironmentObject private var progress: ProgressStore
 
   @State private var query = ""
   @State private var role = ""
@@ -32,16 +33,22 @@ struct BrowseView: View {
 
   private func matches(_ title: String, _ itemRole: String, _ category: String) -> Bool {
     if !role.isEmpty, itemRole != role { return false }
-    let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-    guard !trimmed.isEmpty else { return true }
-    let haystack = (title + " " + itemRole + " " + category).lowercased()
-    return trimmed.split(separator: " ").allSatisfy { haystack.contains($0.lowercased()) }
+    return Search.matches(title + " " + itemRole + " " + category, query: query)
+  }
+
+  /// Lessons already started and not finished, most recent first.
+  private var continueWatching: [Lesson] {
+    let all = scan.courses.flatMap(\.lessons) + scan.videos + scan.commentaries
+    var byKey: [String: Lesson] = [:]
+    for lesson in all { byKey[lesson.progressKey] = lesson }
+    return progress.recentKeys(limit: 10).compactMap { byKey[$0] }
   }
 
   var body: some View {
     ScrollView {
       VStack(alignment: .leading, spacing: 22) {
         summary
+        if !continueWatching.isEmpty { ContinueShelf(lessons: continueWatching) }
         if !roles.isEmpty { roleChips }
 
         if !courses.isEmpty {
@@ -150,7 +157,7 @@ struct BrowseView: View {
         Button {
           player.play(lesson)
         } label: {
-          LessonRow(lesson: lesson)
+          LessonRow(lesson: lesson, progress: progress.fraction(for: lesson.progressKey))
         }
         .buttonStyle(.plain)
         if lesson.id != lessons.last?.id {
