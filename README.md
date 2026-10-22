@@ -215,17 +215,40 @@ on the phone itself, into the same folders the desktop build writes.
   and every other request is raced against a budget. A file that yields no frame
   falls back to a gradient seeded from its title, so a card never looks broken.
   (`testTheHLSAssetReportsWhatItExposes` records what the asset actually exposes.)
-- **Playback.** `AVPlayerViewController`, so picture in picture, AirPlay and
-  subtitle tracks come for free; the position of every file is remembered and
-  resumed above five seconds. A downloaded `.ts` is played by handing the player
-  a **one-segment `#EXTM3U` playlist** served by a loopback HTTP server
-  (`Support/LessonServer.swift`): the file is its own only segment, its duration
-  comes from the catalogue (or a placeholder when unknown), and its bytes are
-  served straight from disk by byte range — no conversion, nothing copied.
-  AVFoundation seeks by byte range, so scrubbing works on a merged file too. The
-  resource-loader route was tried first and does not work: Apple's HLS stack
-  refuses the media bytes a delegate answers with, and an asset served that way
-  reports its duration and never a frame.
+- **Playback.** A hand-built player (`Views/PlayerScreen.swift`) over an
+  `AVPlayerLayer`, so the transport behaves like a phone player's: **double tap a
+  side to skip** five seconds — and keep counting, 10 s, 15 s, inside a 1.2 s burst
+  that a pause or a tap on the other side restarts (a person who went forward three
+  times and back once must not be thrown 20 s the wrong way) — **drag across to
+  scrub**, **drag up the left half for brightness and the right half for the
+  sound** (a write goes through the `UISlider` inside a hidden `MPVolumeView`,
+  since `AVAudioSession.outputVolume` is read-only and hardware buttons are
+  otherwise the only way), one tap for the chrome, which hides itself after four
+  seconds of playback, and a rate button cycling 1×/1.25×/1.5×/2×. Picture in
+  picture, AirPlay and hardware decoding are still the platform's own
+  (`Support/PictureInPicture.swift` wraps `AVPictureInPictureController` around the
+  layer). The maths behind every gesture lives in `Support/PlayerGestures.swift`
+  (`PlayerMath`, `SkipBurst`) so it is pinned by a test rather than by eye.
+  `AVPlayerViewController` was used until 1.4.0 and could not carry any of it: its
+  chrome cannot be extended, so a lesson could not offer what a phone player offers.
+  The position of every file is remembered and resumed above five seconds, and the
+  transport steps through the queue the cover was opened from. A downloaded `.ts`
+  is played by handing the player a **one-segment `#EXTM3U` playlist** served by a
+  loopback HTTP server (`Support/LessonServer.swift`): the file is its own only
+  segment, its duration comes from the catalogue (or a placeholder when unknown),
+  and its bytes are served straight from disk by byte range — no conversion,
+  nothing copied. AVFoundation seeks by byte range, so scrubbing works on a merged
+  file too. The resource-loader route was tried first and does not work: Apple's
+  HLS stack refuses the media bytes a delegate answers with, and an asset served
+  that way reports its duration and never a frame.
+- **Posters.** One box, `Views/PosterArt.swift`, for both kinds of art: a frame
+  pulled out of a local file (`PosterStore`) or a poster the site hosts
+  (`Support/RemoteArt.swift`, in-memory plus the URL cache — nothing is written
+  into the library). The box takes the **art's own shape** once it has loaded — a
+  576×912 course card, a 1920×1080 still — because cropping a portrait poster into
+  a 16:9 strip throws away two thirds of it, including the title the site printed
+  at the top; until then it stands in with the shape that kind of art usually has,
+  so a grid never reflows under the tap (`Support/PosterShape.swift`).
 - **Folder access.** `Choose a folder…` opens the system picker, so iCloud Drive,
   On My iPad and another app's folder all work; the pick becomes a security-scoped
   bookmark and the next launch reopens it. Two things refuse it otherwise, and

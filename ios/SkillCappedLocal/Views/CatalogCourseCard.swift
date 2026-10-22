@@ -11,16 +11,20 @@ struct CatalogCourseCard: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
-      ZStack(alignment: .topLeading) {
-        RemotePoster(url: item.thumbURL, seed: item.title)
-          .frame(height: 124)
-
+      PosterArt(
+        url: item.thumbURL,
+        seed: item.title,
+        fallback: PosterShape.portrait,
+        glyphSize: 24
+      )
+      .overlay(alignment: .bottom) {
         LinearGradient(
           colors: [.clear, Palette.bg.opacity(0.92)],
           startPoint: .center,
           endPoint: .bottom
         )
-
+      }
+      .overlay(alignment: .topLeading) {
         HStack(spacing: 4) {
           if !item.role.isEmpty {
             Text(Format.roleLabel(item.role))
@@ -41,7 +45,6 @@ struct CatalogCourseCard: View {
         }
         .padding(8)
       }
-      .frame(height: 124)
 
       VStack(alignment: .leading, spacing: 5) {
         Text(item.title)
@@ -85,8 +88,7 @@ struct CatalogLessonRow: View {
     Button(action: action) {
       HStack(spacing: 12) {
         ZStack(alignment: .bottomTrailing) {
-          RemotePoster(url: item.thumbURL, seed: item.title)
-            .frame(width: 104, height: 59)
+          PosterArt(url: item.thumbURL, seed: item.title, width: 104, glyphSize: 18)
             .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
 
           if item.durationSec > 0 {

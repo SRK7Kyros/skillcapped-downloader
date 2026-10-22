@@ -5,16 +5,21 @@ struct CourseCard: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
-      ZStack(alignment: .topLeading) {
-        Poster(url: course.bannerURL, seed: course.title, targetWidth: 560)
-          .frame(height: 124)
-
+      PosterArt(
+        url: course.bannerURL,
+        seed: course.title,
+        fallback: PosterShape.landscape,
+        targetWidth: 560,
+        glyphSize: 22
+      )
+      .overlay(alignment: .bottom) {
         LinearGradient(
           colors: [.clear, Palette.bg.opacity(0.92)],
           startPoint: .center,
           endPoint: .bottom
         )
-
+      }
+      .overlay(alignment: .topLeading) {
         if !course.role.isEmpty {
           Text(Format.roleLabel(course.role))
             .font(.caption2.weight(.heavy))
@@ -25,7 +30,6 @@ struct CourseCard: View {
             .padding(8)
         }
       }
-      .frame(height: 124)
 
       VStack(alignment: .leading, spacing: 5) {
         Text(course.title)
@@ -63,8 +67,7 @@ struct LessonRow: View {
   var body: some View {
     HStack(spacing: 12) {
       ZStack(alignment: .bottomTrailing) {
-        Poster(url: lesson.url, seed: lesson.title, targetWidth: 320)
-          .frame(width: 104, height: 59)
+        PosterArt(url: lesson.url, seed: lesson.title, width: 104, targetWidth: 320, glyphSize: 18)
           .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
 
         if let quality = lesson.quality {

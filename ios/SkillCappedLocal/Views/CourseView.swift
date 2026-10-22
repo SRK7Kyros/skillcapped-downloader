@@ -14,7 +14,7 @@ struct CourseView: View {
         LazyVStack(spacing: 0) {
           ForEach(Array(course.lessons.enumerated()), id: \.element.id) { index, lesson in
             Button {
-              player.play(lesson)
+              player.play(lesson, in: course.lessons)
             } label: {
               LessonRow(
                 lesson: lesson,
@@ -40,16 +40,21 @@ struct CourseView: View {
   }
 
   private var header: some View {
-    ZStack(alignment: .bottomLeading) {
-      Poster(url: course.bannerURL, seed: course.title, targetWidth: 1100)
-        .frame(height: 208)
-
+    PosterArt(
+      url: course.bannerURL,
+      seed: course.title,
+      fallback: PosterShape.landscape,
+      height: 208,
+      targetWidth: 1_100
+    )
+    .overlay(alignment: .bottom) {
       LinearGradient(
         colors: [.clear, Palette.bg.opacity(0.55), Palette.bg],
         startPoint: .top,
         endPoint: .bottom
       )
-
+    }
+    .overlay(alignment: .bottomLeading) {
       VStack(alignment: .leading, spacing: 8) {
         if !course.role.isEmpty {
           Text(Format.roleLabel(course.role))
@@ -78,6 +83,5 @@ struct CourseView: View {
       .padding(.horizontal, 16)
       .padding(.bottom, 12)
     }
-    .frame(height: 208)
   }
 }

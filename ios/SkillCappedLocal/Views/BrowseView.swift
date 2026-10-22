@@ -155,7 +155,7 @@ struct BrowseView: View {
     LazyVStack(spacing: 0) {
       ForEach(lessons) { lesson in
         Button {
-          player.play(lesson)
+          player.play(lesson, in: lessons)
         } label: {
           LessonRow(lesson: lesson, progress: progress.fraction(for: lesson.progressKey))
         }

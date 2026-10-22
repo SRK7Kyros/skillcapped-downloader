@@ -77,16 +77,21 @@ struct DiscoverCourseView: View {
   }
 
   private var header: some View {
-    ZStack(alignment: .bottomLeading) {
-      RemotePoster(url: course.thumbURL, seed: course.title)
-        .frame(height: 208)
-
+    PosterArt(
+      url: course.thumbURL,
+      seed: course.title,
+      fallback: PosterShape.portrait,
+      height: 208,
+      targetWidth: 1_100
+    )
+    .overlay(alignment: .bottom) {
       LinearGradient(
         colors: [.clear, Palette.bg.opacity(0.55), Palette.bg],
         startPoint: .top,
         endPoint: .bottom
       )
-
+    }
+    .overlay(alignment: .bottomLeading) {
       VStack(alignment: .leading, spacing: 8) {
         if !course.role.isEmpty {
           Text(Format.roleLabel(course.role))
@@ -117,12 +122,11 @@ struct DiscoverCourseView: View {
       .padding(.horizontal, 16)
       .padding(.bottom, 12)
     }
-    .frame(height: 208)
   }
 
   private func act(on item: CatalogItem) {
     if let lesson = localLesson(for: item.id) {
-      player.play(lesson)
+      player.play(lesson, in: lessons.compactMap { localLesson(for: $0.id) })
       return
     }
     guard downloads.task(for: item.id) == nil, !downloads.isReady(item.id) else { return }

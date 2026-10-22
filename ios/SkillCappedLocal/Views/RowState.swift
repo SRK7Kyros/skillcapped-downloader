@@ -1,55 +1,5 @@
 import SwiftUI
 
-/// Cover art for a catalogue row, which the site hosts as a plain image URL —
-/// so the phone can show a course before a single byte of video is downloaded.
-/// The gradient is the same deterministic fallback a local poster uses.
-struct RemotePoster: View {
-  let url: URL?
-  var seed: String
-
-  var body: some View {
-    // The gradient is the base view, not a ZStack sibling, so the poster takes
-    // exactly the frame the caller gives: an aspect-filled image would report
-    // its own size and overflow — over the card caption and the lesson rows.
-    LinearGradient(
-      colors: Palette.gradient(for: seed),
-      startPoint: .topLeading,
-      endPoint: .bottomTrailing
-    )
-    .overlay { artwork }
-    .clipped()
-  }
-
-  @ViewBuilder
-  private var artwork: some View {
-    if let url {
-      AsyncImage(url: url) { phase in
-        switch phase {
-        case let .success(image):
-          image
-            .resizable()
-            .scaledToFill()
-        case .failure:
-          glyph
-        case .empty:
-          ProgressView()
-            .tint(.white.opacity(0.4))
-        @unknown default:
-          glyph
-        }
-      }
-    } else {
-      glyph
-    }
-  }
-
-  private var glyph: some View {
-    Image(systemName: "play.circle.fill")
-      .font(.system(size: 28, weight: .semibold))
-      .foregroundStyle(.white.opacity(0.22))
-  }
-}
-
 /// The download affordance every catalogue row carries, in one place so the
 /// states cannot drift apart between the grid and the course screen.
 enum RowState: Equatable {

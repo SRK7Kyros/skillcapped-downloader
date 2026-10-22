@@ -18,7 +18,7 @@ struct ContinueShelf: View {
         HStack(spacing: 12) {
           ForEach(lessons) { lesson in
             Button {
-              player.play(lesson)
+              player.play(lesson, in: lessons)
             } label: {
               card(lesson)
             }
@@ -33,13 +33,18 @@ struct ContinueShelf: View {
 
   private func card(_ lesson: Lesson) -> some View {
     VStack(alignment: .leading, spacing: 6) {
-      Poster(url: lesson.url, seed: lesson.title, targetWidth: 360)
-        .frame(width: 168, height: 94)
-        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-        .overlay {
-          RoundedRectangle(cornerRadius: 10, style: .continuous)
-            .stroke(Palette.line, lineWidth: 1)
-        }
+      PosterArt(
+        url: lesson.url,
+        seed: lesson.title,
+        width: 168,
+        targetWidth: 360,
+        glyphSize: 20
+      )
+      .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+      .overlay {
+        RoundedRectangle(cornerRadius: 10, style: .continuous)
+          .stroke(Palette.line, lineWidth: 1)
+      }
 
       Text(lesson.title)
         .font(.caption.weight(.semibold))
