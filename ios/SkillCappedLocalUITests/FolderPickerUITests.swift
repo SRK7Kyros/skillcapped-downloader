@@ -3,7 +3,9 @@ import XCTest
 /// The folder button used to kill the app: UIKit raises an Objective-C exception
 /// from the picker's initializer when the running signature carries no iCloud
 /// container entitlement. This drives the real button and insists the system
-/// picker appears.
+/// folder picker presents, with its confirm button enabled — a picker left on its
+/// default root leaves Open disabled for folders and gives the user nothing to
+/// select.
 final class FolderPickerUITests: XCTestCase {
   func testTheFolderButtonPresentsTheSystemPicker() {
     let app = XCUIApplication()
@@ -22,17 +24,23 @@ final class FolderPickerUITests: XCTestCase {
     XCTAssertTrue(choose.waitForExistence(timeout: 15), "the library sheet should open")
     choose.tap()
 
-    let cancel = app.buttons["Cancel"]
-    let presented = cancel.waitForExistence(timeout: 30)
+    let open = app.buttons["Open"]
+    let presented = open.waitForExistence(timeout: 30)
 
     let shot = XCTAttachment(screenshot: app.screenshot())
     shot.name = "picker"
     shot.lifetime = .keepAlways
     add(shot)
 
-    XCTAssertTrue(presented, "the system folder picker should present:\n\(app.debugDescription)")
+    XCTAssertTrue(presented, "the system folder picker should present, ready to open a folder:\n\(app.debugDescription)")
     XCTAssertEqual(app.state, .runningForeground, "the picker must not kill the app")
 
+    let cancel = app.buttons["Cancel"]
+    if !cancel.exists {
+      let container = app.buttons["On My iPhone"]
+      if container.exists { container.tap() }
+    }
+    XCTAssertTrue(cancel.waitForExistence(timeout: 10), "the picker dismisses back to the sheet:\n\(app.debugDescription)")
     cancel.tap()
     XCTAssertTrue(choose.waitForExistence(timeout: 20), "dismissing the picker returns to the sheet")
   }
