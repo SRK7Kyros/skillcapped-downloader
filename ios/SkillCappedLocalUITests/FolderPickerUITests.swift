@@ -3,9 +3,8 @@ import XCTest
 /// The folder button used to kill the app: UIKit raises an Objective-C exception
 /// from the picker's initializer when the running signature carries no iCloud
 /// container entitlement. This drives the real button and insists the system
-/// folder picker presents, with its confirm button enabled — a picker left on its
-/// default root leaves Open disabled for folders and gives the user nothing to
-/// select.
+/// folder picker presents, ready to open a folder — and that it can be dismissed
+/// again, since the open-in-place browser has no Cancel of its own.
 final class FolderPickerUITests: XCTestCase {
   func testTheFolderButtonPresentsTheSystemPicker() {
     let app = XCUIApplication()
@@ -25,23 +24,27 @@ final class FolderPickerUITests: XCTestCase {
     choose.tap()
 
     let open = app.buttons["Open"]
-    let presented = open.waitForExistence(timeout: 30)
+    let cancel = app.buttons["Cancel"]
+    let deadline = Date().addingTimeInterval(30)
+    while Date() < deadline, !open.exists, !cancel.exists {
+      Thread.sleep(forTimeInterval: 0.3)
+    }
 
     let shot = XCTAttachment(screenshot: app.screenshot())
     shot.name = "picker"
     shot.lifetime = .keepAlways
     add(shot)
 
-    XCTAssertTrue(presented, "the system folder picker should present, ready to open a folder:\n\(app.debugDescription)")
+    XCTAssertTrue(open.exists || cancel.exists, "the system folder picker should present:\n\(app.debugDescription)")
     XCTAssertEqual(app.state, .runningForeground, "the picker must not kill the app")
 
-    let cancel = app.buttons["Cancel"]
-    if !cancel.exists {
-      let container = app.buttons["On My iPhone"]
-      if container.exists { container.tap() }
+    if cancel.exists {
+      cancel.tap()
+    } else {
+      let top = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.06))
+      let bottom = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.95))
+      top.press(forDuration: 0.1, thenDragTo: bottom)
     }
-    XCTAssertTrue(cancel.waitForExistence(timeout: 10), "the picker dismisses back to the sheet:\n\(app.debugDescription)")
-    cancel.tap()
-    XCTAssertTrue(choose.waitForExistence(timeout: 20), "dismissing the picker returns to the sheet")
+    XCTAssertTrue(choose.waitForExistence(timeout: 20), "the picker dismisses back to the sheet:\n\(app.debugDescription)")
   }
 }

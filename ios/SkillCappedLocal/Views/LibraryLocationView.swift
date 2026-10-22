@@ -13,7 +13,6 @@ struct LibraryLocationView: View {
   @Environment(\.dismiss) private var dismiss
 
   @State private var candidates: [URL] = []
-  @State private var pickerRequest: FolderPickerRequest?
   @State private var pickerNote: String?
 
   var body: some View {
@@ -85,23 +84,18 @@ struct LibraryLocationView: View {
       .onAppear(perform: reload)
     }
     .tint(Palette.brand)
-    .fullScreenCover(item: $pickerRequest) { request in
-      FolderPickerSheet(controller: request.controller) { url in
-        pickerRequest = nil
-        guard let url else { return }
-        pickerNote = nil
-        store.choose(url)
-        dismiss()
-      }
-      .ignoresSafeArea()
-    }
   }
 
   private func openPicker() {
     switch FolderAccess.picker(startingAt: store.documentsURL) {
     case let .ready(controller):
       pickerNote = nil
-      pickerRequest = FolderPickerRequest(controller: controller)
+      FolderPickerPresenter.present(controller) { url in
+        guard let url else { return }
+        pickerNote = nil
+        store.choose(url)
+        dismiss()
+      }
     case let .unavailable(reason):
       pickerNote = reason
     }

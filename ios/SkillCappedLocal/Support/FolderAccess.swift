@@ -1,4 +1,3 @@
-import SwiftUI
 import UIKit
 
 /// The system folder picker, kept behind an Objective-C probe.
@@ -39,44 +38,5 @@ enum FolderAccess {
 
     iOS \(UIDevice.current.systemVersion) · build \(Bundle.main.appVersion)
     """
-  }
-}
-
-/// A ready picker plus the identity `sheet(item:)` needs.
-struct FolderPickerRequest: Identifiable {
-  let id = UUID()
-  let controller: UIDocumentPickerViewController
-}
-
-/// Presents a picker built by `FolderAccess.picker()`.
-struct FolderPickerSheet: UIViewControllerRepresentable {
-  let controller: UIDocumentPickerViewController
-  let onPick: (URL?) -> Void
-
-  func makeCoordinator() -> Coordinator {
-    Coordinator(onPick: onPick)
-  }
-
-  func makeUIViewController(context: Context) -> UIDocumentPickerViewController {
-    controller.delegate = context.coordinator
-    return controller
-  }
-
-  func updateUIViewController(_ controller: UIDocumentPickerViewController, context: Context) {}
-
-  final class Coordinator: NSObject, UIDocumentPickerDelegate {
-    private let onPick: (URL?) -> Void
-
-    init(onPick: @escaping (URL?) -> Void) {
-      self.onPick = onPick
-    }
-
-    func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
-      onPick(urls.first)
-    }
-
-    func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
-      onPick(nil)
-    }
   }
 }
