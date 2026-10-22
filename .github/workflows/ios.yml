@@ -78,6 +78,10 @@ jobs:
           fi
           exit $STATUS
 
+      - name: Show the media survey
+        if: always()
+        run: grep -aE "HLS_SURVEY" "$RUNNER_TEMP/tests.log" || true
+
       - name: Show the test log tail
         if: always()
         run: tail -80 "$RUNNER_TEMP/tests.log" || true
