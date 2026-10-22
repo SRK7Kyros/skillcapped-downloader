@@ -155,12 +155,41 @@ still adds it to the bulk selection.
 
 ## iOS app
 
-`ios/` is a read-only phone companion: point it at the folder the downloader
-writes to — wherever it lives, iCloud Drive included — and it becomes a browsable
-library with real cover art and native playback. The folder is read in place:
-nothing is uploaded, nothing is copied, and a lesson held only in iCloud is
-fetched the moment you play it.
+`ios/` is the phone companion, and it both reads and writes. Point it at the
+folder the downloader writes to — wherever it lives, iCloud Drive included — and
+it becomes a browsable library with real cover art and native playback. The
+folder is read in place: nothing is uploaded, nothing is copied, and a lesson
+held only in iCloud is fetched the moment you play it. From **Discover** it also
+reads the site's own catalogue, so a lesson or a whole course can be downloaded
+on the phone itself, into the same folders the desktop build writes.
 
+- **Discover.** `CatalogService` looks the dump's address up in Firestore (the
+  site publishes it in a document it reads at runtime), fetches it, flattens
+  `courses`, `videos` and `commentaries` into one row shape and caches the result
+  for thirty minutes. The catalogue is browsable before a byte is on disk: covers
+  come from the CDN, search is the same folded match the rest of the app uses, and
+  the role chips filter. A course that is already here wears the console's green
+  border, solid when it is complete.
+- **Downloading.** `SegmentDownloader` fetches the HLS parts four at a time under
+  one shared polite budget, then remuxes to MP4 with `AVAssetExportSession` and
+  verifies the output before the row turns `ready`. Files land in
+  `Courses/<role>/<course>/`, `Videos/<role>/<category>/` and
+  `Commentaries/<role>/` under the desktop's `<title> [<uuid>] <quality>.mp4`
+  name, so a phone download and a desktop download of the same course merge
+  instead of duplicating. One lesson runs at a time so the phone stays
+  responsive, and the queue is persisted: a relaunch resumes it.
+- **Quality.** The order in `Settings` is the fallback ladder — 1080p, then 720p,
+  then 4K by default — and the first rendition the CDN actually publishes wins.
+  A label is understood in both vocabularies, the file-name one (`2160p`) and the
+  name the app shows (`4K`). `QualityPlanTests` pins the ladder, the pick and the
+  spelling the CDN gets back.
+- **Continue watching.** Every position is remembered against the catalogue id,
+  so it survives a re-download or a move between folders, and the browse screen
+  leads with the lessons left unfinished.
+- **Where it writes.** Downloads land in the library folder the app is pointed
+  at, so the browser finds them immediately; with no folder chosen they go to the
+  app's own Documents folder, which is the same place the desktop library lands
+  when you use **On My iPhone › SkillCapped Local**.
 - **What it reads.** `<title> [<uuid>] <quality>.mp4` under
   `Courses/<role>/<course>/`, `Videos/<role>/<category>/` and
   `Commentaries/<role>/`, exactly as `src/core/naming.ts` writes them, joined to
