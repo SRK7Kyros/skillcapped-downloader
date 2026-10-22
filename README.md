@@ -199,12 +199,19 @@ on the phone itself, into the same folders the desktop build writes.
   its lessons in. Both containers are playable — an `.mp4` from the desktop and a
   `.ts` from this app (and a `.ts` copied in by hand). Without that catalogue file
   the folders still group a course, and a video copied in by hand keeps its own
-  name.
+  name — its id comes from the uuid in the filename, so a lesson scanned before
+  the catalogue loaded still remembers where you stopped and still matches a
+  download made on this phone.
 - **Cover art.** A frame pulled out of each lesson (`AVAssetImageGenerator`), a
-  little way in, cached under `Caches/posters`. The generator is built on the
-  same asset the player gets, so a downloaded `.ts` yields a real frame too. A
-  file that cannot yield a frame falls back to a gradient seeded from its title,
-  so a card never looks broken.
+  little way in, cached under `Caches/posters`. Only the containers this platform
+  can read yield one: an `.mp4` from the desktop does, a downloaded `.ts` does
+  not — the player reads a transport stream through the HLS stack, and an HLS
+  asset reports **no tracks**, so the generator has nothing to decode and never
+  answers (measured; the same stream plays). A `.ts` is therefore not asked for a
+  frame at all, and every other request is raced against a budget, because a
+  generator that never returns would otherwise leave a card waiting forever. A
+  file that yields no frame falls back to a gradient seeded from its title, so a
+  card never looks broken.
 - **Playback.** `AVPlayerViewController`, so picture in picture, AirPlay and
   subtitle tracks come for free; the position of every file is remembered and
   resumed above five seconds. A downloaded `.ts` is played by handing the player
@@ -262,7 +269,9 @@ on the phone itself, into the same folders the desktop build writes.
   (`brew install xcodegen && cd ios && xcodegen generate`). iPhone and iPad,
   iOS 17+. `.github/workflows/ios.yml` runs the unit and UI suites on a
   simulator and publishes an unsigned IPA artifact; the sideloader (Feather,
-  AltStore) applies its own signing profile. The app declares no entitlements.
+  AltStore) applies its own signing profile. The app declares no entitlements. The
+  marketing version comes from `ios/project.yml` `MARKETING_VERSION` — the
+  workflow reads it whenever its dispatch input is blank, so a bump is one edit.
 
 ## Development
 
