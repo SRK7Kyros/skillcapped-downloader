@@ -53,12 +53,16 @@ jobs:
 
       - name: Unit and UI tests
         working-directory: ios
+        timeout-minutes: 14
         run: |
           set +e
           xcodebuild test \
             -project SkillCappedLocal.xcodeproj \
             -scheme SkillCappedLocal \
             -destination "platform=iOS Simulator,name=${{ steps.sim.outputs.device }}" \
+            -test-timeouts-enabled YES \
+            -default-test-execution-time-allowance 120 \
+            -maximum-test-execution-time-allowance 300 \
             -resultBundlePath "$RUNNER_TEMP/tests.xcresult" \
             > "$RUNNER_TEMP/tests.log" 2>&1
           STATUS=$?
@@ -68,6 +72,10 @@ jobs:
             grep -E "Test Case .* failed|error:" "$RUNNER_TEMP/tests.log" | head -40
           fi
           exit $STATUS
+
+      - name: Show the test log tail
+        if: always()
+        run: tail -80 "$RUNNER_TEMP/tests.log" || true
 
       - name: Upload test results
         if: always()
