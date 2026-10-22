@@ -208,9 +208,11 @@ on the phone itself, into the same folders the desktop build writes.
   than a bug here: Apple's *Creating images from a video asset* states that
   generating images from HLS works only when the stream provides a media playlist
   with the `EXT-X-I-FRAMES-ONLY` tag, and `AVURLAsset.loadTracks` answers an empty
-  array for an HLS asset by design. A `.ts` is therefore not asked for a frame at
-  all — a request that never returns would leave a card waiting forever — and
-  every other request is raced against a budget. A file that yields no frame
+  array for an HLS asset by design. Measured on the runner against our own asset,
+  that is exactly what it does — `playable=true | duration=3.00s | tracks=0`, and
+  the load answers rather than stalling. A `.ts` is therefore not asked for a
+  frame at all — a request that never returns would leave a card waiting forever —
+  and every other request is raced against a budget. A file that yields no frame
   falls back to a gradient seeded from its title, so a card never looks broken.
   (`testTheHLSAssetReportsWhatItExposes` records what the asset actually exposes.)
 - **Playback.** `AVPlayerViewController`, so picture in picture, AirPlay and

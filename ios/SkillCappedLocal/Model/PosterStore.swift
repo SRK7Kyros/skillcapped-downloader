@@ -60,9 +60,10 @@ actor PosterStore {
   /// Cover art, for the containers this platform can read a frame out of.
   ///
   /// A transport stream is served to the player as HLS, and an HLS asset reports no
-  /// tracks — measured, the same stream that plays reports zero — so the generator
-  /// has nothing to decode and never answers. The card keeps its gradient instead
-  /// of paying for a request that cannot succeed.
+  /// tracks — `testTheHLSAssetReportsWhatItExposes` reads that list off this very
+  /// asset and finds it empty while the stream plays — so the generator has nothing
+  /// to decode and never answers. The card keeps its gradient instead of paying for
+  /// a request that cannot succeed.
   private static func frame(of url: URL, width: CGFloat) async -> UIImage? {
     guard !LessonServer.offers(url) else { return nil }
     let media = await LessonMedia.assets(url: url, seconds: 0)

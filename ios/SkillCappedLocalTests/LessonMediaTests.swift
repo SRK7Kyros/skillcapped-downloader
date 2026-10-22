@@ -109,20 +109,25 @@ final class LessonMediaTests: XCTestCase {
   /// What the local server's HLS asset actually exposes.
   ///
   /// The app skips cover art for a transport stream on the grounds that an HLS
-  /// asset reports no tracks. Nothing ever read that list: it was inferred from a
-  /// poster request that never returned, and the asset here is an ordinary
-  /// `http://127.0.0.1` m3u8 — the resource-loader route was rejected precisely
-  /// because it reported a duration and never a frame — so the claim is worth
-  /// reading off our own asset instead of quoting docs.
+  /// asset reports no tracks. Nothing ever read that list — it was inferred from a
+  /// poster request that never returned — so the claim is read off our own asset
+  /// here rather than quoted from docs. Measured on the runner (22 Oct 2026):
   ///
-  /// The assertion is only that the survey settles: a load that never answers is
-  /// the failure worth pinning, because waiting on one once truncated a whole test
-  /// session. The finding is the printed `HLS_SURVEY` line.
+  ///     HLS_SURVEY: presentation=0x0 | playable=true | duration=3.00s | tracks=0
+  ///
+  /// `loadTracks` answers an empty array promptly rather than stalling, so the
+  /// empty list is a property of an HLS asset and not a timeout; the duration is
+  /// the playlist's `EXTINF`; and the player item's `presentationSize` — the
+  /// substitute Apple names for the missing tracks — is `0x0` here as well. There
+  /// is no route to a frame from this asset short of an `EXT-X-I-FRAMES-ONLY`
+  /// playlist or a real container.
   func testTheHLSAssetReportsWhatItExposes() async throws {
     let item = await LessonMedia.item(url: try fixture(), seconds: 3)
     let survey = await settle { await Self.survey(item) }
     print("HLS_SURVEY: " + (survey ?? "no answer within \(Self.surveyBudget)s"))
-    XCTAssertNotNil(survey, "the HLS asset never answered what it exposes")
+    let answer = try XCTUnwrap(survey, "the HLS asset never answered what it exposes")
+    XCTAssertTrue(answer.contains("playable=true"), "the asset should play: \(answer)")
+    XCTAssertTrue(answer.contains("tracks=0"), "an HLS asset reports no tracks: \(answer)")
   }
 
   /// The survey itself, printed a fact at a time so a load that stalls still
