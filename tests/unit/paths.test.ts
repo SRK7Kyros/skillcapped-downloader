@@ -13,7 +13,7 @@ describe("isEmbeddedDir", () => {
   })
 
   test("leaves real folders alone", () => {
-    expect(isEmbeddedDir("/home/opc/everything/kyros/code/skillcapped-downloader/src")).toBe(false)
+    expect(isEmbeddedDir("/opt/skillcapped/src")).toBe(false)
     expect(isEmbeddedDir("D:\\Code\\skillcapped-downloader")).toBe(false)
     expect(isEmbeddedDir("C:/Users/Giulio")).toBe(false)
     expect(isEmbeddedDir("")).toBe(false)
