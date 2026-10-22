@@ -64,8 +64,8 @@ jobs:
           STATUS=$?
           grep -E "Test Case .*(passed|failed)|Executed [0-9]+ test|error:|\*\* TEST" "$RUNNER_TEMP/tests.log" | tail -80
           if [ $STATUS -ne 0 ]; then
-            echo "--- last 120 lines ---"
-            tail -120 "$RUNNER_TEMP/tests.log"
+            echo "--- failing tests ---"
+            grep -E "Test Case .* failed|error:" "$RUNNER_TEMP/tests.log" | head -40
           fi
           exit $STATUS
 

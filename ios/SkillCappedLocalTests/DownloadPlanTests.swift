@@ -79,13 +79,15 @@ final class DownloadPlanTests: XCTestCase {
   }
 
   func testDestinationIsNestedUnderTheRoot() {
+    // The folder is the course, the file name is the lesson — the desktop's
+    // destinationPath builds them the same way, so the two libraries merge.
     let url = DownloadPlan.destination(
       root: URL(fileURLWithPath: "/lib"),
       shape: shape(courseTitle: "Wave Control"),
       id: "abc123",
       qualityLabel: "720p"
     )
-    XCTAssertEqual(url.path, "/lib/Courses/adc/Wave Control/Wave Control [abc123] 720p.mp4")
+    XCTAssertEqual(url.path, "/lib/Courses/adc/Wave Control/Farming [abc123] 720p.mp4")
   }
 
 
