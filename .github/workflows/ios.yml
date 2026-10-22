@@ -25,7 +25,7 @@ jobs:
 
       - name: Resolve version
         id: version
-        run: echo "version=${{ inputs.version || '1.2.0' }}" >> "$GITHUB_OUTPUT"
+        run: echo "version=${{ inputs.version || '1.2.1' }}" >> "$GITHUB_OUTPUT"
 
       - name: Install XcodeGen
         run: brew install xcodegen

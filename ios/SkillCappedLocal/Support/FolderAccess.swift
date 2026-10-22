@@ -25,16 +25,19 @@ enum FolderAccess {
   }
 
   /// UIKit's own reason first — the exact sentence is worth showing — then what
-  /// the user can do about it in this build.
+  /// the user can do about it in this build. Only blame the signing profile when
+  /// UIKit named iCloud: the picker also refuses for reasons a profile cannot fix.
   static func explanation(_ reason: String?) -> String {
     let head = reason.flatMap { $0.isEmpty ? nil : $0 }
       ?? "This build cannot open the system folder picker."
+    let why = head.lowercased().contains("icloud")
+      ? "The picker needs the iCloud container entitlement, which only the signing profile can supply."
+      : "The system refused to open the picker."
     return """
     \(head)
 
-    The picker needs the iCloud container entitlement, which only the signing \
-    profile can supply. Your library still works: copy the downloader's folder \
-    into On My iPhone › SkillCapped Local and pick it from the list below.
+    \(why) Your library still works: copy the downloader's folder into On My \
+    iPhone › SkillCapped Local and pick it from the list below.
     """
   }
 }

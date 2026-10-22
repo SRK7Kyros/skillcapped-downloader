@@ -183,7 +183,12 @@ fetched the moment you play it.
   `Support/PickerProbe.m`, the app ships the containers in
   `SkillCappedLocal.entitlements` (ad-hoc signed into the IPA by CI so a
   re-signing tool keeps them), and a build whose profile lacks them reports the
-  refusal in the sheet instead of dying. The fallback is unchanged: with
+  refusal in the sheet instead of dying. Opening a folder is also an API
+  distinction: the `asCopy:` initializer refuses a folder type outright
+  (`folder import is not supported`) **even when `asCopy:false` is passed**, so the
+  probe asks for the plain opening initializer, retries with the pre-iOS-14
+  open-mode call, and reports both refusals if neither is allowed —
+  `FolderPickerTests` builds it on every run. The fallback is unchanged: with
   `UIFileSharingEnabled` the app's own Documents folder is visible as **On My
   iPhone › SkillCapped Local**, and `LibraryLocator` lists every folder in there
   holding `Courses`, `Videos` or `Commentaries`. A single candidate is adopted on
