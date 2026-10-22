@@ -188,27 +188,34 @@ fetched the moment you play it.
   (`folder import is not supported`) **even when `asCopy:false` is passed**, so the
   probe asks for the plain opening initializer, retries with the pre-iOS-14
   open-mode call, and reports both refusals if neither is allowed —
-  `FolderPickerTests` builds it on every run. The fallback is unchanged: with
-  `UIFileSharingEnabled` the app's own Documents folder is visible as **On My
+  `FolderPickerTests` builds it on every run, and `FolderPickerUITests` drives the
+  real button and insists the system picker appears (it does in the simulator,
+  screenshot attached to the run). A refusal names the iOS version and build it
+  came from, so a device-side refusal diagnoses itself. The fallback is unchanged:
+  with `UIFileSharingEnabled` the app's own Documents folder is visible as **On My
   iPhone › SkillCapped Local**, and `LibraryLocator` lists every folder in there
   holding `Courses`, `Videos` or `Commentaries`. A single candidate is adopted on
   launch, several are offered in the `Library folder` sheet. Picking a folder that
   merely *contains* the library (iCloud Drive's root, a Downloads folder) adopts
-  the only library one level down. `Settings` reports what was scanned, how large
+  the only library one level down (`ExternalFolderTests` pins both, and that the
+  bookmark survives a relaunch). `Settings` reports what was scanned, how large
   it is and whether it lives in iCloud.
 - **Cloud files.** A pick does not download anything — a listing and a file size
-  are metadata. A lesson whose bytes are only in iCloud is a placeholder
-  `AVPlayer` cannot open, so playback asks iCloud for it (`CloudFile`) and shows
-  `Downloading from iCloud…` until it lands; a poster that cannot be generated
-  falls back to the gradient.
+  are metadata. A lesson whose bytes are only in iCloud can be listed as its
+  hidden shadow file (`.Name [id] 1080p.mp4.icloud`): it is shown at the name it
+  restores to, marked as needing a download, and listed once — never beside a
+  downloaded copy. `AVPlayer` cannot open a placeholder, so playback asks iCloud
+  for it (`CloudFile`) and shows `Downloading from iCloud…` until it lands; a
+  poster that cannot be generated falls back to the gradient.
 - **Build.** XcodeGen generates the project from `ios/project.yml`
   (`brew install xcodegen && cd ios && xcodegen generate`). iPhone and iPad,
   iOS 17+. `.github/workflows/ios.yml` runs the unit and UI suites on a
   simulator and publishes an IPA artifact — ad-hoc signed with
   `SkillCappedLocal.entitlements` so a sideloader (Feather, AltStore) keeps the
-  iCloud containers when it re-signs. The container name must be one the signing
-  team owns: change it in the entitlements file and add it to the App ID in the
-  developer portal.
+  iCloud containers when it re-signs, and the packaged app is then **verified** to
+  carry its container (the job fails rather than shipping one without it). The
+  container name must be one the signing team owns: change it in the entitlements
+  file and add it to the App ID in the developer portal.
 
 ## Development
 
