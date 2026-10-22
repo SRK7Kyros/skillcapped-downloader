@@ -171,7 +171,7 @@ final class StreamAsset: NSObject, AVAssetResourceLoaderDelegate {
       : min(Int64(data.requestedLength), available)
     var remaining = length
     while remaining > 0, !wasDropped(request) {
-      let take = Int(min(Int64(chunk), remaining))
+      let take = Int(min(Int64(Self.chunk), remaining))
       guard let bytes = try? handle.read(upToCount: take), !bytes.isEmpty else { break }
       data.respond(with: bytes)
       remaining -= Int64(bytes.count)
