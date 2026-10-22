@@ -30,7 +30,7 @@ final class DownloadNameTests: XCTestCase {
 
   func testPlayableExtensions() {
     XCTAssertTrue(DownloadName.playableExtensions.contains("mp4"))
-    XCTAssertFalse(DownloadName.playableExtensions.contains("ts"))
+    XCTAssertTrue(DownloadName.playableExtensions.contains("ts"))
     XCTAssertFalse(DownloadName.playableExtensions.contains("json"))
   }
 }

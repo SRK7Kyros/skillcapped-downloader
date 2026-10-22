@@ -14,9 +14,12 @@ struct DownloadShape: Hashable {
 /// The layout is the one the desktop downloader writes, so a phone download and
 /// a desktop download of the same course merge into one course instead of two:
 ///
-///     Videos/<Role>/<Category>/<Title> [uuid] <label>.mp4
-///     Courses/<Role>/<Course>/<Title> [uuid] <label>.mp4
-///     Commentaries/<Role>/<Title> [uuid] <label>.mp4
+///     Videos/<Role>/<Category>/<Title> [uuid] <label>.<ext>
+///     Courses/<Role>/<Course>/<Title> [uuid] <label>.<ext>
+///     Commentaries/<Role>/<Title> [uuid] <label>.<ext>
+///
+/// The phone writes `.ts` (the transport stream the CDN served, which is what iOS
+/// can play); the desktop writes `.mp4`.
 enum DownloadPlan {
   static let segmentSeconds = 10.0
   static let maxSegments = 20_000

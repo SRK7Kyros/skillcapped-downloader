@@ -56,7 +56,8 @@ actor PosterStore {
   }
 
   private static func frame(of url: URL, width: CGFloat) async -> UIImage? {
-    let asset = AVURLAsset(url: url)
+    let media = LessonMedia.assets(url: url, seconds: 0)
+    let asset = media?.asset ?? AVURLAsset(url: url)
     let seconds = await frameSecond(of: asset)
     let generator = AVAssetImageGenerator(asset: asset)
     generator.appliesPreferredTrackTransform = true
@@ -65,18 +66,15 @@ actor PosterStore {
     generator.requestedTimeToleranceAfter = CMTime(seconds: 2, preferredTimescale: 600)
 
     let time = CMTime(seconds: seconds, preferredTimescale: 600)
-    if let result = try? await generator.image(at: time) {
-      return UIImage(cgImage: result.image)
-    }
-    if let result = try? await generator.image(at: .zero) {
-      return UIImage(cgImage: result.image)
-    }
-    return nil
+    let frame = (try? await generator.image(at: time)) ?? (try? await generator.image(at: .zero))
+    _ = media?.loader
+    guard let frame else { return nil }
+    return UIImage(cgImage: frame.image)
   }
 
   /// A frame a little way in, past title cards, capped so long lessons do not
   /// spend their first seconds on a fade.
-  private static func frameSecond(of asset: AVURLAsset) async -> Double {
+  private static func frameSecond(of asset: AVAsset) async -> Double {
     guard let duration = try? await asset.load(.duration) else { return 3 }
     let total = CMTimeGetSeconds(duration)
     guard total.isFinite, total > 1 else { return 0 }

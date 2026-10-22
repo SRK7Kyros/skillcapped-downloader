@@ -7,7 +7,7 @@ struct DownloadName: Equatable {
   let id: String?
   let quality: String?
 
-  static let playableExtensions: Set<String> = ["mp4", "m4v", "mov"]
+  static let playableExtensions: Set<String> = ["mp4", "m4v", "mov", "ts", "m2ts"]
 
   private static let pattern: NSRegularExpression? = try? NSRegularExpression(
     pattern: #"^(.*?)\s*\[([a-z0-9]{6,12})\]\s*(\d{3,4}p)$"#,

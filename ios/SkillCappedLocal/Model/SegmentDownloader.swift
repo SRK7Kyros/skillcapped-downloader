@@ -1,4 +1,3 @@
-import AVFoundation
 import Foundation
 
 /// One lesson to fetch, with everything needed to name where it lands.
@@ -37,7 +36,6 @@ enum DownloadError: LocalizedError {
   case noSegments
   case segment(index: Int, status: Int)
   case emptySegment(index: Int)
-  case remux(String)
   case storage
 
   var errorDescription: String? {
@@ -47,7 +45,6 @@ enum DownloadError: LocalizedError {
     case .noSegments: return "The CDN answered but held no video parts."
     case let .segment(index, status): return "Part \(index) failed (HTTP \(status))."
     case let .emptySegment(index): return "Part \(index) came back empty."
-    case let .remux(reason): return "Could not finish the file: \(reason)"
     case .storage: return "Not enough space to save this lesson."
     }
   }
@@ -57,8 +54,9 @@ enum DownloadError: LocalizedError {
 ///
 /// There is no upstream playlist: every lesson is a numbered run of 10-second
 /// MPEG-TS parts (`HIDDEN<quality>-<#####>.ts`), so the tail is found by probing
-/// and the parts are merged into one transport stream before being rewrapped as
-/// an MP4.
+/// and the parts are merged into one transport stream — which is what gets
+/// stored, because iOS plays MPEG-TS through its HLS stack and not at all as a
+/// bare file.
 actor SegmentDownloader {
   static let shared = SegmentDownloader()
 
@@ -173,21 +171,8 @@ actor SegmentDownloader {
       shape: request.shape,
       id: request.uuid,
       qualityLabel: label,
-      extension: "mp4"
+      extension: "ts"
     )
-
-    // The export runs in the job folder, never in the library: AVFoundation
-    // writes through a helper that does not inherit the app's access to a folder
-    // the user picked, and a half-written file must not land there either.
-    let finished = jobDir.appendingPathComponent("finished-\(qualityId).mp4", isDirectory: false)
-    try? FileManager.default.removeItem(at: finished)
-    do {
-      try await Remuxer.remux(ts: merged, to: finished)
-      try await Remuxer.verify(finished, expectedSeconds: request.durationSec)
-    } catch {
-      try? FileManager.default.removeItem(at: finished)
-      throw DownloadError.remux((error as? LocalizedError)?.errorDescription ?? error.localizedDescription)
-    }
 
     do {
       try FileManager.default.createDirectory(
@@ -197,10 +182,11 @@ actor SegmentDownloader {
       if FileManager.default.fileExists(atPath: destination.path) {
         try FileManager.default.removeItem(at: destination)
       }
-      try FileManager.default.moveItem(at: finished, to: destination)
+      try FileManager.default.moveItem(at: merged, to: destination)
     } catch {
       throw DownloadError.storage
     }
+    Self.discardStaleSiblings(of: destination)
     try? FileManager.default.removeItem(at: jobDir)
 
     return DownloadOutcome(
@@ -305,22 +291,40 @@ actor SegmentDownloader {
     throw DownloadError.segment(index: index, status: lastStatus)
   }
 
+  /// Merged into a scratch name and renamed into place, so a crash mid-merge
+  /// can never leave a half-written stream that the next attempt resumes from.
   private func merge(total: Int, jobDir: URL, into merged: URL) throws {
-    FileManager.default.createFile(atPath: merged.path, contents: nil)
-    guard let sink = try? FileHandle(forWritingTo: merged) else { throw DownloadError.storage }
-    defer { try? sink.close() }
-    for index in 1...total {
-      let part = Self.partURL(jobDir, index)
-      guard let handle = try? FileHandle(forReadingFrom: part) else {
-        throw DownloadError.segment(index: index, status: 0)
+    let scratch = merged.appendingPathExtension("part")
+    try? FileManager.default.removeItem(at: scratch)
+    FileManager.default.createFile(atPath: scratch.path, contents: nil)
+    guard let sink = try? FileHandle(forWritingTo: scratch) else { throw DownloadError.storage }
+    var written: Int64 = 0
+    do {
+      for index in 1...total {
+        let part = Self.partURL(jobDir, index)
+        guard let handle = try? FileHandle(forReadingFrom: part) else {
+          throw DownloadError.segment(index: index, status: 0)
+        }
+        defer { try? handle.close() }
+        while true {
+          guard let data = try? handle.read(upToCount: 1 << 20), !data.isEmpty else { break }
+          try sink.write(contentsOf: data)
+          written += Int64(data.count)
+        }
       }
-      defer { try? handle.close() }
-      while true {
-        guard let data = try? handle.read(upToCount: 1 << 20), !data.isEmpty else { break }
-        try sink.write(contentsOf: data)
-      }
+      try sink.synchronize()
+    } catch {
+      try? sink.close()
+      try? FileManager.default.removeItem(at: scratch)
+      throw error
     }
-    try sink.synchronize()
+    try? sink.close()
+    guard written > 0 else {
+      try? FileManager.default.removeItem(at: scratch)
+      throw DownloadError.noSegments
+    }
+    try? FileManager.default.removeItem(at: merged)
+    try FileManager.default.moveItem(at: scratch, to: merged)
   }
 
   nonisolated static func partURL(_ jobDir: URL, _ index: Int) -> URL {
@@ -358,83 +362,18 @@ actor SegmentDownloader {
     let values = try? url.resourceValues(forKeys: [.fileSizeKey])
     return Int64(values?.fileSize ?? 0)
   }
-}
 
-/// Rewraps the merged transport stream as an MP4. The bytes are already a valid
-/// video, so this only swaps the container — never re-encodes unless the
-/// passthrough refuses the stream.
-enum Remuxer {
-  enum RemuxFailure: LocalizedError {
-    case noSession
-    case failed(String)
-
-    var errorDescription: String? {
-      switch self {
-      case .noSession: return "the system could not open the transport stream"
-      case let .failed(reason): return reason
-      }
-    }
-  }
-
-  static func remux(ts: URL, to output: URL) async throws {
-    let asset = AVURLAsset(url: ts)
-    let hasAudio = ((try? await asset.loadTracks(withMediaType: .audio)) ?? []).count > 0
-
-    do {
-      try await export(asset: asset, preset: AVAssetExportPresetPassthrough, to: output)
-      if hasAudio, ((try? await AVURLAsset(url: output).loadTracks(withMediaType: .audio)) ?? []).isEmpty {
-        throw RemuxFailure.failed("the pass-through lost the audio track")
-      }
-    } catch {
-      // A cancelled download must stop here: re-encoding takes minutes and the
-      // user asked for it to end.
-      try Task.checkCancellation()
-      try? FileManager.default.removeItem(at: output)
-      try await export(asset: asset, preset: AVAssetExportPresetHighestQuality, to: output)
-    }
-  }
-
-  private static func export(asset: AVURLAsset, preset: String, to output: URL) async throws {
-    guard let session = AVAssetExportSession(asset: asset, presetName: preset) else {
-      throw RemuxFailure.noSession
-    }
-    try? FileManager.default.removeItem(at: output)
-    session.outputURL = output
-    session.outputFileType = .mp4
-    await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-      session.exportAsynchronously { continuation.resume() }
-    }
-    switch session.status {
-    case .completed:
-      return
-    case .cancelled:
-      throw RemuxFailure.failed("the export was cancelled")
-    default:
-      // The domain and code are what makes a device report actionable: the
-      // sentence alone is AVFoundation's catch-all for -11800.
-      let code = session.error.map { error -> String in
-        let ns = error as NSError
-        return "\(ns.domain) \(ns.code)"
-      } ?? "no code"
-      let message = session.error?.localizedDescription ?? "the export failed"
-      throw RemuxFailure.failed("\(message) [\(code)]")
-    }
-  }
-
-  /// A truncated remux is worse than none: the output has to be about as long as
-  /// the duration the catalogue claims.
-  static func verify(_ url: URL, expectedSeconds: Int) async throws {
-    let values = try? url.resourceValues(forKeys: [.fileSizeKey])
-    guard (values?.fileSize ?? 0) > 0 else {
-      throw RemuxFailure.failed("the finished file was empty")
-    }
-    guard expectedSeconds > 0 else { return }
-    let asset = AVURLAsset(url: url)
-    guard let duration = try? await asset.load(.duration) else { return }
-    let seconds = CMTimeGetSeconds(duration)
-    guard seconds.isFinite, seconds > 0 else { return }
-    if seconds < Double(expectedSeconds) - 20 {
-      throw RemuxFailure.failed("only \(Int(seconds))s of \(expectedSeconds)s were written")
+  /// An earlier build wrote an `.mp4` here that iOS could never open. The same
+  /// lesson must not be listed twice, so every other extension of that exact
+  /// name goes.
+  static func discardStaleSiblings(of destination: URL) {
+    let folder = destination.deletingLastPathComponent()
+    let stem = destination.deletingPathExtension().lastPathComponent
+    guard let names = try? FileManager.default.contentsOfDirectory(atPath: folder.path) else { return }
+    for name in names where name != destination.lastPathComponent {
+      guard (name as NSString).deletingPathExtension == stem else { continue }
+      try? FileManager.default.removeItem(at: folder.appendingPathComponent(name))
     }
   }
 }
+

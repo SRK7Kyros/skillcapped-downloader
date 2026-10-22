@@ -8,6 +8,7 @@ struct PlayerScreen: View {
   @EnvironmentObject private var progress: ProgressStore
   @Environment(\.dismiss) private var dismiss
   @State private var player: AVPlayer?
+  @State private var loader: StreamAsset?
   @State private var waitingForCloud = false
   @State private var failure: String?
   @State private var preparing: Task<Void, Never>?
@@ -91,9 +92,10 @@ struct PlayerScreen: View {
 
   private func attach() {
     guard player == nil else { return }
-    let item = AVPlayerItem(url: lesson.url)
-    let player = AVPlayer(playerItem: item)
+    let media = LessonMedia.item(url: lesson.url, seconds: lesson.seconds)
+    let player = AVPlayer(playerItem: media.item)
     player.allowsExternalPlayback = true
+    loader = media.loader
 
     let saved = progress.progress(for: lesson.progressKey)
     if let saved, WatchProgressMath.shouldResume(position: saved.position, duration: saved.duration) {
@@ -134,6 +136,7 @@ struct PlayerScreen: View {
     )
     player.pause()
     self.player = nil
+    loader = nil
   }
 }
 
