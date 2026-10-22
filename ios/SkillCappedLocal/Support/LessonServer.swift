@@ -269,13 +269,13 @@ final class LessonServer: @unchecked Sendable {
       try? handle.close()
       return connection.cancel()
     }
-    connection.send(content: bytes) { [weak self] error in
+    connection.send(content: bytes, completion: .contentProcessed { [weak self] error in
       guard error == nil else {
         try? handle.close()
         return connection.cancel()
       }
       self?.chunk(connection, handle: handle, remaining: remaining - bytes.count)
-    }
+    })
   }
 
   private func fail(_ connection: NWConnection, _ status: Status) {
@@ -294,27 +294,30 @@ final class LessonServer: @unchecked Sendable {
   /// Send the head (with an optional small body), then a graceful end of stream:
   /// a cancel while bytes are still in flight truncates the response.
   private func reply(_ connection: NWConnection, head: String, body: Data = Data()) {
-    connection.send(content: Data(head.utf8)) { [weak self] error in
+    connection.send(content: Data(head.utf8), completion: .contentProcessed { [weak self] error in
       guard error == nil, let self else { return connection.cancel() }
       guard !body.isEmpty else { return self.finish(connection) }
-      connection.send(content: body) { [weak self] error in
+      connection.send(content: body, completion: .contentProcessed { [weak self] error in
         guard error == nil, let self else { return connection.cancel() }
         self.finish(connection)
-      }
-    }
+      })
+    })
   }
 
   private func replyHead(_ connection: NWConnection, head: String, then next: @escaping () -> Void) {
-    connection.send(content: Data(head.utf8)) { error in
+    connection.send(content: Data(head.utf8), completion: .contentProcessed { error in
       guard error == nil else { return connection.cancel() }
       next()
-    }
+    })
   }
 
   private func finish(_ connection: NWConnection) {
-    connection.send(content: nil, contentContext: .finalMessage, isComplete: true) { _ in
-      connection.cancel()
-    }
+    connection.send(
+      content: nil,
+      contentContext: .finalMessage,
+      isComplete: true,
+      completion: .contentProcessed { _ in connection.cancel() }
+    )
   }
 
   private static func parseRange(_ header: String) -> (Int, Int?)? {
