@@ -101,9 +101,16 @@ final class LibraryLocatorTests: XCTestCase {
 
   func testThePickedFolderLookStaysShallow() throws {
     let picked = try folder("picked")
-    try touch("picked/a/b/Courses/adc/course/lesson [a1b2c3d4e5] 1080p.mp4")
+    try touch("picked/a/b/c/Courses/adc/course/lesson [a1b2c3d4e5] 1080p.mp4")
 
     XCTAssertTrue(LibraryLocator.libraries(in: picked, depth: 2).isEmpty)
-    XCTAssertEqual(LibraryLocator.libraries(in: picked).map(\.lastPathComponent), ["b"])
+    XCTAssertEqual(LibraryLocator.libraries(in: picked).map(\.lastPathComponent), ["c"])
+  }
+
+  func testThePickedFolderLookFindsTwoLevelsIn() throws {
+    let picked = try folder("picked")
+    try touch("picked/a/b/Courses/adc/course/lesson [a1b2c3d4e5] 1080p.mp4")
+
+    XCTAssertEqual(LibraryLocator.libraries(in: picked, depth: 2).map(\.lastPathComponent), ["b"])
   }
 }

@@ -24,8 +24,9 @@ enum LibraryLocator {
 
   /// Every library folder at or below `root`, shallowest first. A library is not
   /// searched further: its lessons are what it offers, and a nested copy would
-  /// only duplicate them. `depth` caps the walk, which a folder handed back by
-  /// the picker uses to look only one level down.
+  /// only duplicate them. `depth` is the deepest level whose folders are still
+  /// tested (the root is 0); a folder handed back by the picker passes 2, so the
+  /// walk looks a couple of levels in without crawling an iCloud Drive root.
   static func libraries(in root: URL, depth limit: Int = maxDepth, manager: FileManager = .default) -> [URL] {
     var found: [URL] = []
     var queue: [(url: URL, depth: Int)] = [(root, 0)]

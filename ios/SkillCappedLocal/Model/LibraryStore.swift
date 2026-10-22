@@ -81,11 +81,6 @@ final class LibraryStore: ObservableObject {
     return found.count == 1 ? found[0] : url
   }
 
-  /// Surface something the app could not do without losing the current library.
-  func report(_ text: String) {
-    message = text
-  }
-
   func isCurrent(_ url: URL) -> Bool {
     guard let scoped else { return false }
     return scoped.standardizedFileURL.path == url.standardizedFileURL.path
