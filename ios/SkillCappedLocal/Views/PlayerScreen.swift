@@ -435,11 +435,13 @@ struct PlayerScreen: View {
     chromeTask?.cancel()
     chromeTask = Task { @MainActor in
       try? await Task.sleep(nanoseconds: 4_000_000_000)
-      // Only a picture that is really advancing takes the chrome away: `playing`
-      // is the intent a tap set, not the fact, so a lesson that failed to open —
-      // or a player stuck at a standstill — would otherwise hide the transport
-      // over a still frame nobody can scrub.
-      guard !Task.isCancelled, drag == nil, (player?.rate ?? 0) > 0 else { return }
+      // Only a picture that is really advancing takes the chrome away, and
+      // `timeControlStatus` is the platform's own answer to that: `rate` is the
+      // rate we asked for, which an item that cannot play keeps at 1 while the
+      // screen shows a still frame (the demo library's empty lessons do exactly
+      // that, and the transport — the only way to close the player — vanished
+      // over it four seconds in).
+      guard !Task.isCancelled, drag == nil, player?.timeControlStatus == .playing else { return }
       withAnimation(.easeOut(duration: 0.25)) { chrome = false }
     }
   }
@@ -622,12 +624,6 @@ private struct Chrome: View {
 
   /// The track, with the elapsed time on its left and the time left on its
   /// right while the row is wide enough to hold all three.
-  ///
-  /// The track is given its width in points rather than "whatever is left": a
-  /// stretchy child in the row grew past the leftover and pushed the controls
-  /// after it off the edge, where iOS drops them out of the accessibility tree
-  /// entirely — the speed and the two queue steps simply were not there for a
-  /// test, or for VoiceOver, to find.
   private var timeline: some View {
     HStack(spacing: 8) {
       if showsTimes {
@@ -635,7 +631,7 @@ private struct Chrome: View {
       }
 
       PlayerScrubber(position: position, duration: duration, onScrub: scrub, onCommit: commit)
-        .frame(width: trackWidth)
+        .frame(maxWidth: .infinity)
 
       if showsTimes {
         time(
@@ -645,16 +641,6 @@ private struct Chrome: View {
         )
       }
     }
-  }
-
-  /// The room the row leaves for the track, worked out from the window: the six
-  /// controls and their gaps, the two readouts when they are shown, and the two
-  /// 10-point paddings are all fixed, so the track takes exactly the rest.
-  private var trackWidth: CGFloat {
-    let window = windowScene?.keyWindow?.bounds.width ?? 0
-    let controls: CGFloat = 230 + 12
-    let readouts: CGFloat = showsTimes ? 8 + 38 + 8 + 44 : 0
-    return max(window - 40 - controls - readouts, 60)
   }
 
   private func time(_ text: String, width: CGFloat, alignment: Alignment) -> some View {
