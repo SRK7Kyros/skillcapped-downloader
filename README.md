@@ -296,13 +296,18 @@ on the phone itself, into the same folders the desktop build writes.
   since `AVAudioSession.outputVolume` is read-only and hardware buttons are
   otherwise the only way), one tap for the chrome, which hides itself after four
   seconds of playback, and a rate button cycling 1×/1.25×/1.5×/2×. The chrome is
-  **one compact bar floating over the picture**, in the system player's shape: play
-  at the left of the timeline, the elapsed and remaining times flanking it, and this
-  app's extras (the queue steps, a ten-second skip, the rate, Picture in Picture)
-  kept at the bar's ends. It reads the window's own safe area for its insets — the
-  picture is drawn through them — so it floats clear of the island and the home
-  indicator; a full-width drawer raised from the bottom of the screen was what made
-  an earlier build's chrome read as a system sheet. Picture in
+  **one row floating over the picture**, in the order a thumb expects: skip back
+  ten, play/pause, skip forward ten, the timeline, the rate, then the queue's
+  previous and next — with the elapsed and remaining times flanking the timeline
+  while the row is wide enough to hold all three (a phone held upright gives that
+  room to the track instead), and **Picture in Picture alone in the screen's
+  top-right corner**, over the close button and the lesson's name. It reads the
+  window's own safe area and width for its insets — the picture is drawn through
+  them — so it floats clear of the island and the home indicator; a full-width
+  drawer raised from the bottom of the screen was what made an earlier build's
+  chrome read as a system sheet. `PlayerChromeUITests` pins the shape: every
+  control but Picture in Picture shares one band of the screen, upright and on its
+  side. Picture in
   picture, AirPlay and hardware decoding are still the platform's own
   (`Support/PictureInPicture.swift` wraps `AVPictureInPictureController` around the
   layer). The maths behind every gesture lives in `Support/PlayerGestures.swift`

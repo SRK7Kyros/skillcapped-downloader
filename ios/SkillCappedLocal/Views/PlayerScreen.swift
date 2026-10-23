@@ -457,9 +457,10 @@ struct PlayerScreen: View {
 }
 
 /// The transport, floating over the picture rather than a drawer over the bottom
-/// of it: one compact bar whose widest thing is the timeline, the shape the
-/// system player uses — play at the left of the timeline and the two times
-/// flanking it — with this app's extras kept at the bar's ends.
+/// of it: one row, in the order a thumb expects — skip back, play, skip forward,
+/// the timeline, the speed, the queue's neighbours — with the Picture in Picture
+/// switch alone in the screen's top-right corner, where it no longer competes
+/// with the controls that are touched every few seconds.
 private struct Chrome: View {
   let lesson: Lesson
   let playing: Bool
@@ -481,7 +482,7 @@ private struct Chrome: View {
 
   var body: some View {
     VStack(spacing: 0) {
-      title
+      header
         .padding(.horizontal, 10)
         .padding(.top, insets.top + 4)
 
@@ -493,19 +494,31 @@ private struct Chrome: View {
     }
   }
 
-  /// The picture is drawn through the safe area, so the chrome cannot inherit
-  /// them from the layout: it asks the window for the device's own, and floats
-  /// clear of the island and the home indicator by itself.
-  private var insets: UIEdgeInsets {
+  /// The window the chrome is drawn in, asked for its safe area and its width:
+  /// the picture runs through the safe area, so neither is inherited from the
+  /// layout, and the bar has to float clear of the island and the home
+  /// indicator by itself.
+  private var windowScene: UIWindowScene? {
     let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
-    let scene = scenes.first { $0.activationState == .foregroundActive } ?? scenes.first
-    return scene?.keyWindow?.safeAreaInsets ?? .zero
+    return scenes.first { $0.activationState == .foregroundActive } ?? scenes.first
   }
 
-  /// Floating too: a close button and the name of the lesson, with the picture
-  /// still visible behind them — a full-screen scrim is what made the old chrome
-  /// read as a drawer.
-  private var title: some View {
+  private var insets: UIEdgeInsets {
+    windowScene?.keyWindow?.safeAreaInsets ?? .zero
+  }
+
+  /// The two times are only worth their room on a wide row; a phone held
+  /// upright gives that width to the timeline, which is the control that needs
+  /// it, so the readouts step aside there.
+  private var showsTimes: Bool {
+    (windowScene?.keyWindow?.bounds.width ?? 0) >= 540
+  }
+
+  /// Floating too: a close button and the name of the lesson at the left, the
+  /// Picture in Picture switch in the top-right corner, with the picture still
+  /// visible behind them — a full-screen scrim is what made the old chrome read
+  /// as a drawer.
+  private var header: some View {
     HStack(spacing: 9) {
       Button(action: close) {
         Image(systemName: "xmark")
@@ -531,16 +544,67 @@ private struct Chrome: View {
       .shadow(color: .black.opacity(0.55), radius: 4, y: 1)
 
       Spacer(minLength: 0)
+
+      if pictureInPicture {
+        Button(action: togglePictureInPicture) {
+          Image(systemName: "pip.enter")
+            .font(.system(size: 12, weight: .bold))
+            .foregroundStyle(.white)
+            .frame(width: 30, height: 30)
+            .background(.black.opacity(0.42), in: Circle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Picture in picture")
+      }
     }
   }
 
+  /// One row: every control at the same height, and the timeline the only thing
+  /// that stretches.
   private var bar: some View {
-    VStack(spacing: 4) {
-      transport
-      extras
+    HStack(spacing: 2) {
+      PlayerButton(glyph: "gobackward.10", size: 16, label: "Back 10 seconds") { skip(-10) }
+
+      Button(action: togglePlay) {
+        Image(systemName: playing ? "pause.fill" : "play.fill")
+          .font(.system(size: 19, weight: .bold))
+          .foregroundStyle(.white)
+          .frame(width: 34, height: 34)
+          .contentShape(Rectangle())
+      }
+      .buttonStyle(.plain)
+      .accessibilityLabel(playing ? "Pause" : "Play")
+
+      PlayerButton(glyph: "goforward.10", size: 16, label: "Forward 10 seconds") { skip(10) }
+
+      timeline
+
+      Button(action: changeRate) {
+        Text(rate == 1 ? "1×" : String(format: "%g×", rate))
+          .font(.system(size: 11, weight: .heavy, design: .rounded))
+          .foregroundStyle(.white.opacity(rate == 1 ? 0.75 : 1))
+          .frame(width: 34, height: 26)
+          .background(Capsule().fill(.white.opacity(rate == 1 ? 0.1 : 0.2)))
+      }
+      .buttonStyle(.plain)
+      .accessibilityLabel("Playback speed, \(rate == 1 ? "normal" : String(format: "%g", rate) + " times")")
+
+      PlayerButton(
+        glyph: "backward.end.fill",
+        size: 13,
+        disabled: !canStepBack,
+        label: "Previous lesson"
+      ) { step(false) }
+
+      PlayerButton(
+        glyph: "forward.end.fill",
+        size: 13,
+        disabled: !canStepForward,
+        label: "Next lesson"
+      ) { step(true) }
     }
-    .padding(.horizontal, 12)
-    .padding(.vertical, 8)
+    .padding(.horizontal, 10)
+    .padding(.vertical, 5)
     .background(
       RoundedRectangle(cornerRadius: 18, style: .continuous)
         .fill(.black.opacity(0.55))
@@ -552,74 +616,31 @@ private struct Chrome: View {
     .shadow(color: .black.opacity(0.35), radius: 14, y: 4)
   }
 
-  /// The timeline, in the system player's order: play, elapsed, the track, the
-  /// time left. The play button is the smallest thing in the row on purpose — a
-  /// 62-point filled circle sat on the picture like a landing pad.
-  private var transport: some View {
-    HStack(spacing: 10) {
-      Button(action: togglePlay) {
-        Image(systemName: playing ? "pause.fill" : "play.fill")
-          .font(.system(size: 19, weight: .bold))
-          .foregroundStyle(.white)
-          .frame(width: 32, height: 32)
-          .contentShape(Rectangle())
+  /// The track, with the elapsed time on its left and the time left on its
+  /// right while the row is wide enough to hold all three.
+  private var timeline: some View {
+    HStack(spacing: 8) {
+      if showsTimes {
+        time(PlayerMath.clock(position), width: 38, alignment: .trailing)
       }
-      .buttonStyle(.plain)
-      .accessibilityLabel(playing ? "Pause" : "Play")
-
-      Text(PlayerMath.clock(position))
-        .font(.system(size: 11, weight: .semibold, design: .rounded).monospacedDigit())
-        .foregroundStyle(.white.opacity(0.82))
-        .frame(width: 40, alignment: .trailing)
 
       PlayerScrubber(position: position, duration: duration, onScrub: scrub, onCommit: commit)
         .frame(maxWidth: .infinity)
 
-      Text(duration > 0 ? "−" + PlayerMath.clock(max(duration - position, 0)) : "--:--")
-        .font(.system(size: 11, weight: .semibold, design: .rounded).monospacedDigit())
-        .foregroundStyle(.white.opacity(0.82))
-        .frame(width: 48, alignment: .leading)
+      if showsTimes {
+        time(
+          duration > 0 ? "−" + PlayerMath.clock(max(duration - position, 0)) : "--:--",
+          width: 44,
+          alignment: .leading
+        )
+      }
     }
   }
 
-  /// Everything the system player does not have, at the bar's ends: stepping
-  /// through the queue and a ten-second skip on the timeline's side, the speed
-  /// and Picture in Picture on the other.
-  private var extras: some View {
-    HStack(spacing: 0) {
-      PlayerButton(
-        glyph: "backward.end.fill",
-        size: 13,
-        disabled: !canStepBack,
-        label: "Previous lesson"
-      ) { step(false) }
-
-      PlayerButton(glyph: "gobackward.10", size: 16, label: "Back 10 seconds") { skip(-10) }
-
-      Spacer(minLength: 8)
-
-      Button(action: changeRate) {
-        Text(rate == 1 ? "1×" : String(format: "%g×", rate))
-          .font(.system(size: 11, weight: .heavy, design: .rounded))
-          .foregroundStyle(.white.opacity(rate == 1 ? 0.75 : 1))
-          .frame(width: 36, height: 26)
-          .background(Capsule().fill(.white.opacity(rate == 1 ? 0.1 : 0.2)))
-      }
-      .buttonStyle(.plain)
-      .accessibilityLabel("Playback speed, \(rate == 1 ? "normal" : String(format: "%g", rate) + " times")")
-
-      if pictureInPicture {
-        PlayerButton(glyph: "pip.enter", size: 13, label: "Picture in picture", action: togglePictureInPicture)
-      }
-
-      PlayerButton(glyph: "goforward.10", size: 16, label: "Forward 10 seconds") { skip(10) }
-
-      PlayerButton(
-        glyph: "forward.end.fill",
-        size: 13,
-        disabled: !canStepForward,
-        label: "Next lesson"
-      ) { step(true) }
-    }
+  private func time(_ text: String, width: CGFloat, alignment: Alignment) -> some View {
+    Text(text)
+      .font(.system(size: 11, weight: .semibold, design: .rounded).monospacedDigit())
+      .foregroundStyle(.white.opacity(0.82))
+      .frame(width: width, alignment: alignment)
   }
 }
