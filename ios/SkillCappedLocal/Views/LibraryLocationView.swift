@@ -102,6 +102,31 @@ struct LibraryLocationView: View {
           Text("Some iOS versions refuse the folder picker outright. Copying puts the folder where the app is always allowed to read it.")
         }
 
+        if let pick = store.lastPick {
+          Section {
+            VStack(alignment: .leading, spacing: 3) {
+              Text(pick.summary)
+                .font(.footnote)
+                .foregroundStyle(Palette.ink)
+                .fixedSize(horizontal: false, vertical: true)
+              Text(pick.access)
+                .font(.caption2)
+                .foregroundStyle(Palette.inkFaint)
+                .fixedSize(horizontal: false, vertical: true)
+              if let problem = pick.problem {
+                Text(problem)
+                  .font(.caption2)
+                  .foregroundStyle(Palette.warn)
+                  .fixedSize(horizontal: false, vertical: true)
+              }
+            }
+          } header: {
+            Text("Last pick")
+          } footer: {
+            Text("What the folder you picked turned out to be, and how long it took to read. A slow pick is a folder stock iOS is still fetching.")
+          }
+        }
+
         Section {
           DisclosureGroup("Picker diagnostics") {
             if attempts.isEmpty {

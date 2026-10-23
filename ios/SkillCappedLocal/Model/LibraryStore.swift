@@ -14,6 +14,12 @@ final class LibraryStore: ObservableObject {
   @Published private(set) var rootURL: URL?
   /// Set while the old library's content is carried into the new one.
   @Published private(set) var moving: LibraryMigration.Progress?
+  /// The folder a pick is reading right now, named so the banner can say what it
+  /// is waiting for instead of spinning anonymously.
+  @Published private(set) var preparing: String?
+  /// What the last pick found and how long it took.
+  @Published private(set) var lastPick: LibraryPick?
+  private var preparingToken: UUID?
 
   private static let bookmarkKey = "library.bookmark"
   private static let pathKey = "library.relativePath"
@@ -109,46 +115,87 @@ final class LibraryStore: ObservableObject {
   /// it) while anything from outside is remembered as a security-scoped bookmark,
   /// which is also what keeps an iCloud Drive folder reachable across launches.
   /// Whatever was downloaded into the previous folder is moved to this one.
+  ///
+  /// The reading happens off the main actor (`LibraryPick.prepare`): a folder in
+  /// another app's container answers through its file provider, and doing that
+  /// here used to freeze the app the moment the picker's **Open** was tapped.
   func choose(_ url: URL) {
-    guard moving == nil else {
-      message = "Still moving the library to the last folder — try again in a moment."
+    guard moving == nil, preparing == nil else {
+      message = "Still opening the last folder — try again in a moment."
       return
     }
-    // The app's own folder is taken as itself, never through a library that
-    // happens to sit inside it.
-    let target = isSamePath(url, documents) ? documents.standardizedFileURL : library(in: url).standardizedFileURL
     let previous = downloadRoot.standardizedFileURL
     let previousScoped = scoped
 
-    if isSamePath(target, documents) {
+    // The app's own folder is taken as itself, never through a library that
+    // happens to sit inside it — and it needs no reading, so it stays immediate.
+    if isSamePath(url, documents) {
+      apply(LibraryPick.prepare(url, documents: documents), previous: previous, previousScoped: previousScoped)
+      return
+    }
+
+    let documents = self.documents
+    let token = UUID()
+    preparingToken = token
+    preparing = displayName(for: url)
+    Task { [weak self] in
+      let pick = await Task.detached(priority: .userInitiated) {
+        LibraryPick.prepare(url, documents: documents)
+      }.value
+      guard let self else {
+        if pick.scopeStarted { pick.target.stopAccessingSecurityScopedResource() }
+        return
+      }
+      guard preparingToken == token else {
+        // Stopped by the user, or a newer pick won: give the scope back.
+        if pick.scopeStarted { pick.target.stopAccessingSecurityScopedResource() }
+        return
+      }
+      preparingToken = nil
+      preparing = nil
+      lastPick = pick
+      apply(pick, previous: previous, previousScoped: previousScoped)
+    }
+  }
+
+  /// Give up on a folder that is taking too long to read. Nothing moves: the
+  /// library stays where it was, which is the point — a pick can never wedge the
+  /// app, however long the file provider takes.
+  func stopPreparing() {
+    guard preparing != nil else { return }
+    preparingToken = nil
+    preparing = nil
+    message = "Left the library where it was."
+  }
+
+  private func apply(_ pick: LibraryPick, previous: URL, previousScoped: URL?) {
+    if pick.ownFolder {
       UserDefaults.standard.set("", forKey: Self.pathKey)
       UserDefaults.standard.removeObject(forKey: Self.bookmarkKey)
       adoptOwnFolder()
-      moveLibrary(from: previous, to: target, releasing: previousScoped)
+      moveLibrary(from: previous, to: pick.target, releasing: previousScoped)
       return
     }
-    if isInsideDocuments(target) {
-      UserDefaults.standard.set(relativePath(of: target), forKey: Self.pathKey)
+    if pick.insideDocuments {
+      UserDefaults.standard.set(relativePath(of: pick.target), forKey: Self.pathKey)
       UserDefaults.standard.removeObject(forKey: Self.bookmarkKey)
     } else {
-      guard let bookmark = try? target.bookmarkData(options: [], includingResourceValuesForKeys: nil, relativeTo: nil) else {
-        message = "That folder could not be remembered. Copy it into the app instead: Files › On My iPhone › SkillCapped Local."
+      guard let bookmark = pick.bookmark else {
+        if pick.scopeStarted { pick.target.stopAccessingSecurityScopedResource() }
+        message = pick.problem
+          ?? "That folder could not be remembered. Copy it into the app instead: Files › On My iPhone › SkillCapped Local."
         return
       }
       UserDefaults.standard.set(bookmark, forKey: Self.bookmarkKey)
       UserDefaults.standard.removeObject(forKey: Self.pathKey)
     }
-    attach(target, persist: false)
-    moveLibrary(from: previous, to: target, releasing: previousScoped)
-  }
-
-  /// A pick may be the library itself or the folder that holds it — iCloud
-  /// Drive's root, a Downloads folder. Adopt the only library one level down,
-  /// and otherwise take the folder as given (scanning reports what it found).
-  private func library(in url: URL) -> URL {
-    guard !LibraryLocator.isLibrary(url) else { return url }
-    let found = LibraryLocator.libraries(in: url, depth: 2)
-    return found.count == 1 ? found[0] : url
+    attach(
+      pick.target,
+      persist: false,
+      scopeStarted: pick.scopeStarted,
+      isCloud: pick.isCloud
+    )
+    moveLibrary(from: previous, to: pick.target, releasing: previousScoped)
   }
 
   func isCurrent(_ url: URL) -> Bool {
@@ -195,6 +242,10 @@ final class LibraryStore: ObservableObject {
       message = "Still moving the library to the last folder — try again in a moment."
       return
     }
+    // A read still in flight would otherwise land after this and point the app
+    // back at the folder the user just walked away from.
+    preparingToken = nil
+    preparing = nil
     UserDefaults.standard.removeObject(forKey: Self.bookmarkKey)
     UserDefaults.standard.removeObject(forKey: Self.pathKey)
     scoped?.stopAccessingSecurityScopedResource()
@@ -253,12 +304,17 @@ final class LibraryStore: ObservableObject {
     return true
   }
 
-  private func attach(_ url: URL, persist: Bool) {
-    let started = url.startAccessingSecurityScopedResource()
+  private func attach(
+    _ url: URL,
+    persist: Bool,
+    scopeStarted: Bool = false,
+    isCloud: Bool? = nil
+  ) {
+    let started = scopeStarted || url.startAccessingSecurityScopedResource()
     scoped = url
     rootURL = url
     rootName = displayName(for: url)
-    isCloudRoot = (try? url.resourceValues(forKeys: [.isUbiquitousItemKey]))?.isUbiquitousItem == true
+    isCloudRoot = isCloud ?? ((try? url.resourceValues(forKeys: [.isUbiquitousItemKey]))?.isUbiquitousItem == true)
     if persist, let bookmark = try? url.bookmarkData(options: [], includingResourceValuesForKeys: nil, relativeTo: nil) {
       UserDefaults.standard.set(bookmark, forKey: Self.bookmarkKey)
     }

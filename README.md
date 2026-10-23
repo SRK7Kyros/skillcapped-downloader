@@ -331,6 +331,23 @@ on the phone itself, into the same folders the desktop build writes.
   at all. Picking a folder that merely *contains* the library
   (iCloud Drive's root, a Downloads folder) adopts the only library one level down
   (`ExternalFolderTests` pins both, and that the bookmark survives a relaunch).
+- **A pick is read off the main actor.** Deciding what a picked folder is means
+  listing it, and a folder in another app's container answers through its file
+  provider — a listing there is a round trip outside this process, and on a tree
+  nobody expected there are thousands of them. Doing that on the main actor is
+  what made the iPad picker's **Open** spin forever with the app frozen behind it
+  (v1.6.1). `LibraryPick.prepare` now runs on a detached task and hands the store
+  a finished answer — target, bookmark, whether the sandbox already allows the
+  folder, and the security scope it is holding on the app's behalf —
+  `LibraryLocator.walk` stops after `walkBudget` (400) folders and says that it
+  stopped, and nothing about the current library changes until the answer is in.
+  While it runs the library shows `Reading <folder>…` with **Stop**, so a folder
+  stock iOS is still fetching can be abandoned instead of wedging the app, and
+  the sheet's **Last pick** line reports what the folder turned out to be, how
+  many folders were read, how long it took, whether the security scope was
+  granted and whether the walk stopped early (`LibraryPickTests`, and the budget
+  cases in `LibraryLocatorTests`). The app's own folder still takes the immediate
+  path: no walk, no bookmark, nothing to wait for.
   `Settings` reports what was scanned, how large it is and whether it lives in
   iCloud.
 - **Cloud files.** A pick does not download anything — a listing and a file size

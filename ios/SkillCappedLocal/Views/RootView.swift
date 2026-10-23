@@ -71,6 +71,8 @@ struct RootView: View {
         .safeAreaInset(edge: .top, spacing: 0) {
           if let moving = store.moving {
             MoveBanner(move: moving)
+          } else if let name = store.preparing {
+            ReadBanner(name: name, stop: { store.stopPreparing() })
           }
         }
         .navigationTitle(store.rootName ?? "SkillCapped Local")
@@ -143,6 +145,38 @@ private struct MoveBanner: View {
       Rectangle().fill(Palette.line).frame(height: 1)
     }
     .accessibilityElement(children: .combine)
+  }
+}
+
+/// A folder is being read — the step after the picker's **Open** that can take
+/// as long as the file provider likes. It says what it is waiting for, and it
+/// can be abandoned, so the app is never stuck behind it.
+private struct ReadBanner: View {
+  let name: String
+  let stop: () -> Void
+
+  var body: some View {
+    HStack(spacing: 10) {
+      ProgressView()
+        .controlSize(.small)
+        .tint(Palette.brand)
+      Text("Reading \(name)…")
+        .font(.caption)
+        .foregroundStyle(Palette.inkDim)
+        .lineLimit(1)
+      Spacer(minLength: 0)
+      Button("Stop", action: stop)
+        .font(.caption.weight(.semibold))
+        .foregroundStyle(Palette.brand)
+        .accessibilityHint("Leaves the library where it is")
+    }
+    .padding(.horizontal, 16)
+    .padding(.vertical, 8)
+    .background(Palette.surface)
+    .overlay(alignment: .bottom) {
+      Rectangle().fill(Palette.line).frame(height: 1)
+    }
+    .accessibilityElement(children: .contain)
   }
 }
 

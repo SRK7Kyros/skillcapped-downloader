@@ -17,6 +17,8 @@ struct SettingsView: View {
           LabeledContent("Source", value: store.isCloudRoot ? "iCloud Drive" : "On this device")
           if let moving = store.moving {
             LabeledContent("Moving", value: moving.label)
+          } else if let preparing = store.preparing {
+            LabeledContent("Reading", value: preparing)
           } else if let message = store.message {
             Text(message)
               .font(.caption)
@@ -24,7 +26,7 @@ struct SettingsView: View {
               .fixedSize(horizontal: false, vertical: true)
           }
           Button("Choose folder") { picking = true }
-            .disabled(store.moving != nil)
+            .disabled(store.moving != nil || store.preparing != nil)
           if store.hasFolder {
             Button("Back to the app's folder") { store.forget() }
               .disabled(store.moving != nil)

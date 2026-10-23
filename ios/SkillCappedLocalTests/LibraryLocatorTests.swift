@@ -113,4 +113,37 @@ final class LibraryLocatorTests: XCTestCase {
 
     XCTAssertEqual(LibraryLocator.libraries(in: picked, depth: 2).map(\.lastPathComponent), ["b"])
   }
+
+  func testTheWalkCountsTheFoldersItLookedAt() throws {
+    try touch("SkillCapped/Courses/adc/course/lesson [a1b2c3d4e5] 1080p.mp4")
+
+    let walk = LibraryLocator.walk(in: root, depth: 2)
+
+    XCTAssertEqual(walk.libraries.map(\.lastPathComponent), ["SkillCapped"])
+    XCTAssertEqual(walk.visited, 2, "the root, then the library inside it")
+    XCTAssertFalse(walk.capped)
+  }
+
+  func testTheWalkStopsAtItsBudgetAndSaysSo() throws {
+    for index in 0..<(LibraryLocator.walkBudget + 20) {
+      _ = try folder("bulk/folder\(index)")
+    }
+
+    let walk = LibraryLocator.walk(in: root, depth: 2, budget: 10)
+
+    XCTAssertTrue(walk.capped, "a tree nobody expected cannot stall the walk")
+    XCTAssertEqual(walk.visited, 10)
+    XCTAssertTrue(walk.libraries.isEmpty)
+  }
+
+  func testTheDefaultWalkSurvivesAHugeTree() throws {
+    for index in 0..<(LibraryLocator.walkBudget + 20) {
+      _ = try folder("bulk/folder\(index)")
+    }
+
+    let walk = LibraryLocator.walk(in: root, depth: 2)
+
+    XCTAssertTrue(walk.capped)
+    XCTAssertLessThanOrEqual(walk.visited, LibraryLocator.walkBudget)
+  }
 }

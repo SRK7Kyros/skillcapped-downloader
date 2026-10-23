@@ -40,11 +40,20 @@ final class ExternalFolderTests: XCTestCase {
     return try XCTUnwrap(store.scan, "the scan should finish")
   }
 
+  private func waitForPick(_ store: LibraryStore, timeout: TimeInterval = 20) async throws {
+    let deadline = Date().addingTimeInterval(timeout)
+    while store.preparing != nil, Date() < deadline {
+      try await Task.sleep(for: .milliseconds(50))
+    }
+    XCTAssertNil(store.preparing, "the pick should finish")
+  }
+
   func testAPickedFolderOutsideTheAppIsScannedAndRemembered() async throws {
     let picked = try library(named: "SkillCapped", into: scratch)
     let store = LibraryStore()
 
     store.choose(picked)
+    try await waitForPick(store)
 
     XCTAssertTrue(store.hasFolder)
     XCTAssertEqual(store.rootName, "SkillCapped")
@@ -67,6 +76,7 @@ final class ExternalFolderTests: XCTestCase {
     let store = LibraryStore()
 
     store.choose(scratch)
+    try await waitForPick(store)
 
     XCTAssertEqual(store.rootName, "SkillCapped", "the library inside the pick is the library")
     let scan = try await waitForScan(store)
