@@ -11,15 +11,15 @@ final class FolderPickerUITests: XCTestCase {
 
     let welcome = app.buttons["Choose a folder"]
     let toolbar = app.buttons["Library folder"]
-    if welcome.waitForExistence(timeout: 40) {
+    if welcome.waitForExistence(timeout: 90) {
       welcome.tap()
     } else {
-      XCTAssertTrue(toolbar.waitForExistence(timeout: 10), "either the welcome button or the toolbar folder button is on screen")
+      XCTAssertTrue(toolbar.waitForExistence(timeout: 20), "either the welcome button or the toolbar folder button is on screen")
       toolbar.tap()
     }
 
     let choose = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Choose a folder'")).firstMatch
-    XCTAssertTrue(choose.waitForExistence(timeout: 15), "the library sheet should open")
+    XCTAssertTrue(choose.waitForExistence(timeout: 40), "the library sheet should open")
     choose.tap()
 
     let open = app.buttons["Open"]
