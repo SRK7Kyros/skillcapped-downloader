@@ -289,7 +289,10 @@ on the phone itself, into the same folders the desktop build writes.
   cards in a row are always equal and a grid never reflows under the tap. A
   one-off hero or a course header passes no window and keeps the art's own shape,
   so nothing is cropped there. `fixedSize(vertical:)` on the grid cards is what
-  stops a card being stretched to a taller row.
+  stops a card being stretched to a taller row. The caption under the art is
+  padded **4pt above / 9pt below**: a line box already carries a few points over
+  its capitals, so a 9pt top band read as a gap of dead card between the poster's
+  hard bottom edge and the title rather than as breathing room.
 - **Folder access.** `Choose a folder…` opens the system picker, so iCloud Drive,
   On My iPad and another app's folder all work; the pick becomes a security-scoped
   bookmark and the next launch reopens it. Two things refuse it otherwise, and
