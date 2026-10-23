@@ -162,6 +162,95 @@ test.describe("browse", () => {
     await expect.poll(unevenRows, { timeout: 10_000 }).toBe(0)
   })
 
+  test("a poster that is taller than the window loses its bottom, not its row", async ({ page }) => {
+    await page.goto("/")
+    await expect(page.locator("article").first()).toBeVisible()
+    await page.waitForTimeout(600)
+
+    const taller = await page.evaluate(`(() => {
+      const canvas = document.createElement("canvas")
+      canvas.width = 576
+      canvas.height = 1000
+      const paint = canvas.getContext("2d")
+      paint.fillStyle = "#202027"
+      paint.fillRect(0, 0, 576, 1000)
+      paint.fillStyle = "#e8412c"
+      paint.fillRect(0, 0, 576, 40)
+      paint.fillStyle = "#2b6cff"
+      paint.fillRect(0, 960, 576, 40)
+      return canvas.toDataURL("image/png")
+    })()`) as string
+
+    await page.evaluate(`(() => {
+      const card = document.querySelector("article")
+      const img = card.querySelector("img")
+      if (img) img.src = ${JSON.stringify(taller)}
+    })()`)
+
+    const shape = (await page.evaluate(`(() => {
+      const cards = [...document.querySelectorAll("article")].slice(0, 6)
+      const rect = cards[0].getBoundingClientRect()
+      const art = cards[0].firstElementChild.getBoundingClientRect()
+      const neighbours = cards.slice(1).map((card) => Math.round(card.getBoundingClientRect().height))
+      return { card: Math.round(rect.height), art: Math.round(art.height), width: Math.round(art.width), neighbours }
+    })()`)) as { card: number; art: number; width: number; neighbours: number[] }
+
+    expect(shape.neighbours.every((height) => height === shape.card), "the taller poster must not make its card taller").toBe(true)
+    expect(shape.art / shape.width, "the box keeps the window's 576:912 shape").toBeCloseTo(912 / 576, 1)
+  })
+
+  test("the taller poster keeps the top of the art and crops the bottom", async ({ page }) => {
+    await page.goto("/")
+    await expect(page.locator("article").first()).toBeVisible()
+    await page.waitForTimeout(600)
+
+    const band = await page.evaluate(`(() => {
+      const canvas = document.createElement("canvas")
+      canvas.width = 576
+      canvas.height = 1000
+      const paint = canvas.getContext("2d")
+      paint.fillStyle = "#202027"
+      paint.fillRect(0, 0, 576, 1000)
+      paint.fillStyle = "#e8412c"
+      paint.fillRect(0, 0, 576, 40)
+      paint.fillStyle = "#2b6cff"
+      paint.fillRect(0, 960, 576, 40)
+      return canvas.toDataURL("image/png")
+    })()`) as string
+
+    await page.evaluate(`(() => {
+      const img = document.querySelector("article img")
+      if (img) img.src = ${JSON.stringify(band)}
+    })()`)
+    await page.mouse.move(1278, 700)
+    await expect
+      .poll(
+        async () =>
+          (await page.evaluate("(() => document.querySelector('article img').naturalWidth)()")) as number,
+        { timeout: 5000 },
+      )
+      .toBe(576)
+    await page.waitForTimeout(300)
+
+    const shot = (await page.locator("article").first().screenshot()).toString("base64")
+    const sample = (await page.evaluate(`(async () => {
+      const art = document.querySelector("article").firstElementChild.getBoundingClientRect()
+      const picture = new Image()
+      picture.src = "data:image/png;base64," + ${JSON.stringify(shot)}
+      await picture.decode()
+      const canvas = document.createElement("canvas")
+      canvas.width = picture.width
+      canvas.height = picture.height
+      const paint = canvas.getContext("2d")
+      paint.drawImage(picture, 0, 0)
+      const read = (y) => [...paint.getImageData(Math.round(art.width / 2), Math.round(y), 1, 1).data].slice(0, 3)
+      return { top: read(6), lower: read(art.height - 70) }
+    })()`)) as { top: number[]; lower: number[] }
+
+    expect(sample.top[0], "the red band at the top of the art is still shown").toBeGreaterThan(150)
+    expect(sample.lower[2], "the art's own bottom band never reaches the box").toBeLessThan(120)
+  })
+
   test("fits the viewport at 375 and 768 without overflow", async ({ page }) => {
     for (const width of [375, 768]) {
       await page.setViewportSize({ width, height: 800 })

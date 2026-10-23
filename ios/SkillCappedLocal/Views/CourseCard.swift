@@ -9,6 +9,7 @@ struct CourseCard: View {
         url: course.bannerURL,
         seed: course.title,
         fallback: PosterShape.landscape,
+        window: PosterShape.landscape,
         targetWidth: 560,
         glyphSize: 22
       )

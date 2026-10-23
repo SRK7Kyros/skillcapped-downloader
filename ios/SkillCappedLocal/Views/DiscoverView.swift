@@ -89,6 +89,7 @@ struct DiscoverView: View {
                     downloaded: downloadedCount(course, in: catalog),
                     total: course.lessonIds.count
                   )
+                  .fixedSize(horizontal: false, vertical: true)
                 }
                 .buttonStyle(.plain)
               }

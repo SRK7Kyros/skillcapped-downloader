@@ -1,6 +1,6 @@
 {
   "name": "skillcapped-downloader",
-  "version": "1.5.0",
+  "version": "1.6.0",
   "private": true,
   "type": "module",
   "description": "Offline browser + bulk downloader for the SkillCapped LoL library. Single-file executable: starts a local web server and opens it in your browser.",

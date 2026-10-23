@@ -1,27 +1,23 @@
 import { describe, expect, test } from "bun:test"
-import { imageRatio, posterRatio } from "../../web/src/lib/media.ts"
+import { posterRatio } from "../../web/src/lib/media.ts"
 
 describe("posterRatio", () => {
   test("reserves a portrait box for course banners, which ship as 576×912 cards", () => {
-    expect(posterRatio("course")).toBe("2 / 3")
+    expect(posterRatio("course")).toBe("576 / 912")
   })
 
   test("reserves a 16:9 box for video and smurf stills", () => {
     expect(posterRatio("video")).toBe("16 / 9")
     expect(posterRatio("commentary")).toBe("16 / 9")
   })
-})
 
-describe("imageRatio", () => {
-  test("returns the poster's own shape so nothing is cropped away", () => {
-    expect(imageRatio(576, 912)).toBe("576 / 912")
-    expect(imageRatio(1280, 720)).toBe("1280 / 720")
-  })
-
-  test("refuses a shape it cannot use, leaving the caller's fallback in place", () => {
-    expect(imageRatio(0, 912)).toBeNull()
-    expect(imageRatio(576, 0)).toBeNull()
-    expect(imageRatio(Number.NaN, 912)).toBeNull()
-    expect(imageRatio(576, Number.POSITIVE_INFINITY)).toBeNull()
+  test("every kind names one window a grid can rely on", () => {
+    const shape = (kind: Parameters<typeof posterRatio>[0]) => {
+      const [width, height] = posterRatio(kind).split(" / ").map(Number)
+      return width / height
+    }
+    expect(shape("course")).toBeLessThan(1)
+    expect(shape("video")).toBeGreaterThan(1)
+    expect(shape("commentary")).toBeGreaterThan(1)
   })
 })

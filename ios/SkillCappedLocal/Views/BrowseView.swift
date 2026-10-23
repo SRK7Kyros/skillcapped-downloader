@@ -61,6 +61,7 @@ struct BrowseView: View {
             ForEach(courses) { course in
               NavigationLink(value: course) {
                 CourseCard(course: course)
+                  .fixedSize(horizontal: false, vertical: true)
               }
               .buttonStyle(.plain)
             }

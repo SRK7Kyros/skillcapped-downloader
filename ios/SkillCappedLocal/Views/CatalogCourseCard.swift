@@ -15,6 +15,7 @@ struct CatalogCourseCard: View {
         url: item.thumbURL,
         seed: item.title,
         fallback: PosterShape.portrait,
+        window: PosterShape.portrait,
         glyphSize: 24
       )
       .overlay(alignment: .topLeading) {
@@ -81,7 +82,14 @@ struct CatalogLessonRow: View {
     Button(action: action) {
       HStack(spacing: 12) {
         ZStack(alignment: .bottomTrailing) {
-          PosterArt(url: item.thumbURL, seed: item.title, width: 104, glyphSize: 18)
+          PosterArt(
+            url: item.thumbURL,
+            seed: item.title,
+            fallback: PosterShape.landscape,
+            window: PosterShape.landscape,
+            width: 104,
+            glyphSize: 18
+          )
             .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
 
           if item.durationSec > 0 {

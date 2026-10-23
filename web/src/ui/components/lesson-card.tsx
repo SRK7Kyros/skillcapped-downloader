@@ -73,7 +73,7 @@ export function LessonCard({
             loading="lazy"
             decoding="async"
             onError={() => setBrokenThumb(true)}
-            className="h-full w-full object-cover transition-transform duration-[var(--dur-slow)] ease-out group-hover:scale-[1.04]"
+            className="absolute inset-0 h-full w-full object-cover object-top transition-transform duration-[var(--dur-slow)] ease-out group-hover:scale-[1.04]"
           />
         ) : (
           <div

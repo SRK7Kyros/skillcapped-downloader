@@ -4,17 +4,24 @@ import UIKit
 /// One media box, whether its art is a frame pulled out of a local file or a
 /// poster the site hosts.
 ///
-/// The box takes the art's own shape — a 576×912 course card, a 1920×1080 still —
-/// because cropping a portrait poster into a 16:9 strip throws away two thirds of
-/// it, including the title the site baked into the top. Before the art arrives
-/// the box stands in with the shape that kind of art usually has, so a grid does
-/// not reflow under the tap.
+/// A box is drawn at **one window shape** — the shape its grid was designed
+/// around — never at the shape of whichever picture happened to arrive. The art
+/// fills that window and is anchored at the top, so a poster that is a little
+/// taller loses its bottom (the title the site bakes into the top always
+/// survives) and a wider one is trimmed at the sides. That is what keeps every
+/// card in a row exactly the same height, and it is also why a grid never
+/// reflows when the art finishes loading.
+///
+/// `window == nil` keeps the older behaviour: the box takes the art's own shape,
+/// for a one-off hero or a thumbnail inside a row.
 struct PosterArt: View {
   let url: URL?
   var seed: String
-  /// Shape before the art loads: `PosterShape.portrait` for a course card,
-  /// `PosterShape.landscape` for a lesson.
+  /// Shape before the art loads, and the shape kept when no window is given.
   var fallback: CGFloat = PosterShape.landscape
+  /// The one shape every box in this grid is drawn at. A window is what makes a
+  /// row of cards uniform whatever art each one got.
+  var window: CGFloat?
   /// A fixed width for a box inside a row; `nil` takes the width it is offered
   /// and keeps its shape at whatever height that needs.
   var width: CGFloat?
@@ -25,7 +32,9 @@ struct PosterArt: View {
   @State private var image: UIImage?
   @State private var shape: CGFloat?
 
-  private var ratio: CGFloat { shape ?? fallback }
+  private var ratio: CGFloat {
+    PosterShape.window(art: shape, fallback: fallback, window: window)
+  }
 
   var body: some View {
     box
@@ -41,7 +50,7 @@ struct PosterArt: View {
       .task(id: url) { await load() }
   }
 
-  /// A box of the art's own shape — the width the caller pins, or the width the
+  /// A box of the window's shape — the width the caller pins, or the width the
   /// parent offers with the height that shape needs.
   @ViewBuilder
   private var box: some View {
@@ -57,9 +66,22 @@ struct PosterArt: View {
   @ViewBuilder
   private var art: some View {
     if let image {
-      Image(uiImage: image)
-        .resizable()
-        .scaledToFill()
+      if window == nil {
+        Image(uiImage: image)
+          .resizable()
+          .scaledToFill()
+      } else {
+        GeometryReader { geo in
+          let artRatio = PosterShape.ratio(of: image.size) ?? ratio
+          let draw = PosterShape.fill(size: geo.size, art: artRatio)
+          Image(uiImage: image)
+            .resizable()
+            .frame(width: draw.width, height: draw.height)
+            // Top-anchored: the overflow inside a window is only ever at the
+            // bottom, and sideways overflow stays centred.
+            .position(x: geo.size.width / 2, y: draw.height / 2)
+        }
+      }
     } else {
       Image(systemName: "play.circle.fill")
         .font(.system(size: glyphSize, weight: .semibold))

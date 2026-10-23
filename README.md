@@ -140,12 +140,16 @@ still adds it to the bulk selection.
 - **No posters for most of the library.** Roughly two thirds of the videos and all
   commentaries predate SkillCapped's poster migration, so the card's no-image
   state is the common case by design and shows the role plus the kind.
-- **Cards take their media shape from the art, not a house ratio.** Course banners
-  are 576×912 portrait cards with the title baked in, video stills are 1280×720,
-  so each card's media box adopts the poster's own aspect ratio (a 2:3 or 16:9
-  placeholder stands in until it loads) instead of cropping to 16:9. Every card
-  reserves two title lines, so the cards in a row are exactly the same height
-  whatever their titles say, and the grid aligns to the top.
+- **Cards are drawn at one window, not at whatever shape the art arrived in.**
+  Course banners are 576×912 portrait cards with the title baked in, video stills
+  are 1280×720, so each grid picks the shape its cards are designed around
+  (`posterRatio` in `web/src/lib/media.ts`) and every media box is that shape. A
+  poster that is a little taller loses its **bottom** — anchored at the top, so
+  the title baked into the top always survives — and a wider one is trimmed at
+  the sides. The box therefore never grows with its picture: the cards in a row
+  are exactly the same height and nothing reflows when the art finishes loading.
+  Every card also reserves two title lines, whatever its title says, and the grid
+  aligns to the top.
 - **Four courses have no published lessons.** Their cards say so and cannot be
   selected.
 - Course titles contain role placeholders (`Wave Control {support}`); they are
@@ -170,9 +174,10 @@ on the phone itself, into the same folders the desktop build writes.
   come from the CDN, search is the same folded match the rest of the app uses, and
   the role chips filter. A course that is already here wears the console's green
   border, solid when it is complete. A card is its poster and nothing else — no
-  scrim over the art, no band under it — and the course page opens with the same
+  scrim over the art, no band under it — while the course page opens with that
   poster **whole**, at its own shape, with the role, title and lesson count under
-  it rather than printed across the art.
+  it rather than printed across the art. The grid itself draws every card at the
+  same window shape, so one odd poster cannot make a row ragged.
 - **Downloading.** `SegmentDownloader` fetches the HLS parts four at a time under
   one shared polite budget and merges them into one MPEG-TS file, which is what
   lands in the library — nothing is re-encoded, because iOS cannot demux a
@@ -274,13 +279,17 @@ on the phone itself, into the same folders the desktop build writes.
 - **Posters.** One box, `Views/PosterArt.swift`, for both kinds of art: a frame
   pulled out of a local file (`PosterStore`) or a poster the site hosts
   (`Support/RemoteArt.swift`, in-memory plus the URL cache — nothing is written
-  into the library). The box takes the **art's own shape** once it has loaded — a
-  576×912 course card, a 1920×1080 still — because cropping a portrait poster into
-  a 16:9 strip throws away two thirds of it, including the title the site printed
-  at the top; until then it stands in with the shape that kind of art usually has,
-  so a grid never reflows under the tap (`Support/PosterShape.swift`). There is no
-  fixed-height variant: a card and a course header are both the art's own box, so
-  nothing is cropped and no band of page background is left inside one.
+  into the library). A box in a grid is drawn at **one window shape** — the shape
+  its grid is designed around, `PosterShape.portrait` for the Discover course
+  cards, `.landscape` for the library's stills and for a lesson thumbnail
+  (`Support/PosterShape.swift`) — never at the shape of whichever picture
+  arrived. The art fills that window anchored at the **top**: a poster a little
+  taller loses its bottom (the title the site printed at the top always survives),
+  a wider one is trimmed at the sides, and because the box cannot change size the
+  cards in a row are always equal and a grid never reflows under the tap. A
+  one-off hero or a course header passes no window and keeps the art's own shape,
+  so nothing is cropped there. `fixedSize(vertical:)` on the grid cards is what
+  stops a card being stretched to a taller row.
 - **Folder access.** `Choose a folder…` opens the system picker, so iCloud Drive,
   On My iPad and another app's folder all work; the pick becomes a security-scoped
   bookmark and the next launch reopens it. Two things refuse it otherwise, and
