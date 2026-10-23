@@ -186,10 +186,15 @@ on the phone itself, into the same folders the desktop build writes.
   come from the CDN, search is the same folded match the rest of the app uses, and
   the role chips filter. A course that is already here wears the console's green
   border, solid when it is complete. A card is its poster and nothing else — no
-  scrim over the art, no band under it — while the course page opens with that
-  poster **whole**, at its own shape, with the role, title and lesson count under
-  it rather than printed across the art. The grid itself draws every card at the
-  same window shape, so one odd poster cannot make a row ragged.
+  scrim over the art, no band under it — and the grid draws every card at the
+  same window shape, so one odd poster cannot make a row ragged. **A course page
+  is two columns**: the poster stays anchored on the left with the role, title,
+  lesson count and a *Play* button under it, and the lessons scroll beside it, so
+  the art never leaves the screen while a long course is read (`Views/CourseView.swift`
+  — the column takes a little over a third of the width, floored so a phone still
+  holds a readable title and capped so an iPad's page is not a poster gallery;
+  below roughly 400pt of lesson room the rows turn **compact**, a smaller still
+  and a taller title, instead of squeezing the words out).
 - **Downloading.** `SegmentDownloader` fetches the HLS parts four at a time under
   one shared polite budget and merges them into one MPEG-TS file, which is what
   lands in the library — nothing is re-encoded, because iOS cannot demux a
@@ -271,7 +276,14 @@ on the phone itself, into the same folders the desktop build writes.
   sound** (a write goes through the `UISlider` inside a hidden `MPVolumeView`,
   since `AVAudioSession.outputVolume` is read-only and hardware buttons are
   otherwise the only way), one tap for the chrome, which hides itself after four
-  seconds of playback, and a rate button cycling 1×/1.25×/1.5×/2×. Picture in
+  seconds of playback, and a rate button cycling 1×/1.25×/1.5×/2×. The chrome is
+  **one compact bar floating over the picture**, in the system player's shape: play
+  at the left of the timeline, the elapsed and remaining times flanking it, and this
+  app's extras (the queue steps, a ten-second skip, the rate, Picture in Picture)
+  kept at the bar's ends. It reads the window's own safe area for its insets — the
+  picture is drawn through them — so it floats clear of the island and the home
+  indicator; a full-width drawer raised from the bottom of the screen was what made
+  an earlier build's chrome read as a system sheet. Picture in
   picture, AirPlay and hardware decoding are still the platform's own
   (`Support/PictureInPicture.swift` wraps `AVPictureInPictureController` around the
   layer). The maths behind every gesture lives in `Support/PlayerGestures.swift`
@@ -282,18 +294,24 @@ on the phone itself, into the same folders the desktop build writes.
   transport steps through the queue the cover was opened from. A downloaded `.ts`
   is played by handing the player a **one-segment `#EXTM3U` playlist** served by a
   loopback HTTP server (`Support/LessonServer.swift`): the file is its own only
-  segment, its duration comes from the catalogue (or a placeholder when unknown),
-  and its bytes are served straight from disk by byte range — no conversion,
-  nothing copied. AVFoundation seeks by byte range, so scrubbing works on a merged
-  file too. The resource-loader route was tried first and does not work: Apple's
-  HLS stack refuses the media bytes a delegate answers with, and an asset served
-  that way reports its duration and never a frame.
+  segment, its duration is the catalogue's (or, for a file the catalogue does not
+  know, read off the stream's own presentation timestamps — `Support/TransportStream.swift`
+  walks both ends of the file for the 90 kHz stamps a PES packet carries, so a
+  hand-copied lesson shows its real length instead of a made-up hour; a stream
+  that states nothing keeps the placeholder, which is why playback is exact
+  either way), and its bytes are served straight from disk by byte range — no
+  conversion, nothing copied. AVFoundation seeks by byte range, so scrubbing
+  works on a merged file too. The resource-loader route was tried first and does
+  not work: Apple's HLS stack refuses the media bytes a delegate answers with, and
+  an asset served that way reports its duration and never a frame.
 - **Posters.** One box, `Views/PosterArt.swift`, for both kinds of art: a frame
   pulled out of a local file (`PosterStore`) or a poster the site hosts
   (`Support/RemoteArt.swift`, in-memory plus the URL cache — nothing is written
   into the library). A box in a grid is drawn at **one window shape** — the shape
-  its grid is designed around, `PosterShape.portrait` for the Discover course
-  cards, `.landscape` for the library's stills and for a lesson thumbnail
+  its grid is designed around, `PosterShape.portrait` for the course cards on
+  **both** surfaces (Discover and the library draw the same card, now that a
+  library course shows the site's printed poster rather than a frame out of its
+  first lesson), `.landscape` for the library's stills and for a lesson thumbnail
   (`Support/PosterShape.swift`) — never at the shape of whichever picture
   arrived. The art fills that window anchored at the **top**: a poster a little
   taller loses its bottom (the title the site printed at the top always survives),
@@ -304,7 +322,17 @@ on the phone itself, into the same folders the desktop build writes.
   stops a card being stretched to a taller row. The caption under the art is
   padded **4pt above / 9pt below**: a line box already carries a few points over
   its capitals, so a 9pt top band read as a gap of dead card between the poster's
-  hard bottom edge and the title rather than as breathing room.
+  hard bottom edge and the title rather than as breathing room. **A lesson
+  downloaded on the phone has no frame to show** — iOS will not decode a
+  transport stream, so `PosterStore` is not even asked — which is why a lesson
+  and a course carry the catalogue's own `thumb` and `PosterArt` falls back to it
+  (`remote:`), and why the library **adopts the fetched catalogue**
+  (`LibraryStore.adopt(catalog:)`, merged under the `.skillcapped/catalog.json`
+  the desktop writes, local winning where both know an item): a folder the phone
+  filled itself has no catalogue file of its own, so without that merge its
+  lessons would have no titles, no order, no durations and no posters at all.
+  Only an `http(s)` string is drawn — anything else would be read as a local file
+  the app never wrote (`Support/WebLink.swift`).
 - **Folder access.** `Choose a folder…` opens the system picker, so iCloud Drive,
   On My iPad and another app's folder all work; the pick becomes a security-scoped
   bookmark and the next launch reopens it. Two things refuse it otherwise, and
