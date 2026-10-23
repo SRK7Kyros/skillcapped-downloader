@@ -317,7 +317,21 @@ on the phone itself, into the same folders the desktop build writes.
   run, pins that starting folder and pins the ladder's first rung as item + folder
   with multiple selection (`FolderPickerUITests` drives the real button and insists
   the system picker appears — it does in the simulator, screenshot attached to the
-  run). A refusal
+  run).
+
+  **The app owns the dismissal.** `UIDocumentPickerViewController` hands the pick to
+  its delegate and then waits: until the app dismisses it, the picker shows a
+  spinner exactly where **Open** was, for ever. Nothing in the build did that, which
+  is what "it spins on Open and the app has to be restarted" was — so
+  `FolderPickerPresenter` now dismisses the picker itself, waits for that dismissal
+  to finish before answering (a second dismissal while one animates is dropped by
+  UIKit and the picker stays up), and answers directly when the system already took
+  the picker away or when a dismissal never reports back. The `isDirectory` stat
+  that decides "folder, not file" runs off the main thread and takes the security
+  scope itself, because a stat through another app's file provider is an
+  out-of-process round trip. The UI suite now drives **Open** as well as Cancel and
+  insists the picker leaves and the library comes back — the path it never touched
+  before, which is the one that hung. A refusal
   names the iOS version and build it came from, so a device-side refusal diagnoses
   itself. The app's own folder needs no picker at all: with `UIFileSharingEnabled`
   it is the app's Documents folder, visible as **On My iPhone › SkillCapped
