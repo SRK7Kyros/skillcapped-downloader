@@ -22,6 +22,29 @@ final class BrowseUITests: XCTestCase {
     add(shot)
   }
 
+  func testACoursePageSurvivesLandscape() {
+    let app = XCUIApplication()
+    app.launchArguments = ["-demoLibrary"]
+    app.launch()
+
+    let course = app.staticTexts["Why You Suck at ADC (ADC)"]
+    XCTAssertTrue(course.waitForExistence(timeout: 40), "the course card should render")
+    course.tap()
+    XCTAssertTrue(app.staticTexts["Farming Fundamentals"].waitForExistence(timeout: 15), "the lesson row should be listed")
+
+    XCUIDevice.shared.orientation = .landscapeLeft
+    defer { XCUIDevice.shared.orientation = .portrait }
+
+    let play = app.buttons["Play Why You Suck at ADC (ADC) from the first lesson"]
+    XCTAssertTrue(play.waitForExistence(timeout: 10), "the pinned Play should be on the landscape page")
+    XCTAssertTrue(app.staticTexts["Farming Fundamentals"].exists, "the lessons should still be listed")
+
+    let shot = XCTAttachment(screenshot: app.screenshot())
+    shot.name = "course-landscape"
+    shot.lifetime = .keepAlways
+    add(shot)
+  }
+
   func testSearchNarrowsTheLibrary() {
     let app = XCUIApplication()
     app.launchArguments = ["-demoLibrary"]

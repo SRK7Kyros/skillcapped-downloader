@@ -28,6 +28,10 @@ struct PosterArt: View {
   /// A fixed width for a box inside a row; `nil` takes the width it is offered
   /// and keeps its shape at whatever height that needs.
   var width: CGFloat?
+  /// An exact box for a hero that must fill a column instead of taking its own
+  /// shape — the art fills it (cropped) like any other window, so a poster can
+  /// never leave a band of gradient behind.
+  var fill: CGSize?
   /// How wide a local frame is generated, in points.
   var targetWidth: CGFloat = 700
   var glyphSize: CGFloat = 28
@@ -53,11 +57,14 @@ struct PosterArt: View {
       .task(id: "\(url?.absoluteString ?? "")|\(remote?.absoluteString ?? "")") { await load() }
   }
 
-  /// A box of the window's shape — the width the caller pins, or the width the
-  /// parent offers with the height that shape needs.
+  /// A box of the window's shape — the exact box a hero fills, else the width the
+  /// caller pins, else the width the parent offers.
   @ViewBuilder
   private var box: some View {
-    if let width {
+    if let fill, PosterShape.ratio(width: fill.width, height: fill.height) != nil {
+      Color.clear
+        .frame(width: fill.width, height: fill.height)
+    } else if let width {
       Color.clear
         .frame(width: width, height: PosterShape.height(width: width, ratio: ratio))
     } else {

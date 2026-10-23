@@ -1,8 +1,13 @@
 import SwiftUI
 
-/// One course on this phone: its poster anchored on the left, its lessons
-/// scrolling beside it, so the art never leaves the screen while a long course is
-/// read.
+/// One course on this phone.
+///
+/// Landscape is the one arrangement where the art can be an anchor rather than a
+/// banner: the poster fills the left edge, whole and still, and the course's
+/// words and *Play* are pinned above the lessons — the only thing that scrolls.
+/// Portrait stacks instead: a poster a third of the width beside the words (never
+/// cropped, never the page), then the lessons in the room below. The columns are
+/// landscape-only because on a portrait phone a poster column eats the list.
 struct CourseView: View {
   let course: Course
 
@@ -11,14 +16,10 @@ struct CourseView: View {
 
   var body: some View {
     GeometryReader { proxy in
-      let side = Self.sideWidth(for: proxy.size.width)
-      let narrow = proxy.size.width - side < 400
-      HStack(alignment: .top, spacing: 0) {
-        poster(width: side)
-        Rectangle()
-          .fill(Palette.line)
-          .frame(width: 1)
-        lessons(compact: narrow)
+      if CourseLayout.isSideBySide(proxy.size) {
+        sideBySide(proxy.size)
+      } else {
+        stacked(proxy.size)
       }
     }
     .background(Palette.bg.ignoresSafeArea())
@@ -26,24 +27,54 @@ struct CourseView: View {
     .navigationBarTitleDisplayMode(.inline)
   }
 
-  /// The column the poster takes: a little over a third of the screen, with a
-  /// floor that still holds a readable title and a ceiling so an iPad's course
-  /// page does not become a poster gallery.
-  static func sideWidth(for width: CGFloat) -> CGFloat {
-    guard width.isFinite, width > 0 else { return 156 }
-    return min(max(width * 0.38, 132), 300)
+  // MARK: - Landscape: poster pinned left, words and lessons on the right
+
+  private func sideBySide(_ size: CGSize) -> some View {
+    let side = CourseLayout.posterColumn(size: size, ratio: PosterShape.portrait)
+    return HStack(alignment: .top, spacing: 0) {
+      // The column is exactly as wide as the art needs to fill the height at its
+      // own shape, so the poster is whole — and it never scrolls.
+      PosterArt(
+        url: course.artURL,
+        seed: course.title,
+        fallback: PosterShape.portraitArt,
+        window: PosterShape.portrait,
+        fill: CGSize(width: side, height: size.height),
+        targetWidth: 900
+      )
+
+      Rectangle()
+        .fill(Palette.line)
+        .frame(width: 1)
+
+      VStack(spacing: 0) {
+        words(pinned: true)
+          .padding(.horizontal, 16)
+          .padding(.top, 14)
+          .padding(.bottom, 12)
+
+        Rectangle()
+          .fill(Palette.line)
+          .frame(height: 1)
+
+        lessons(compact: CourseLayout.lessonsAreTight(width: size.width, side: side))
+      }
+      .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+    }
   }
 
-  private func poster(width: CGFloat) -> some View {
-    let printed = course.posterURL != nil
-    return ScrollView(.vertical, showsIndicators: false) {
-      VStack(alignment: .leading, spacing: 14) {
+  // MARK: - Portrait: a small poster beside the words, lessons underneath
+
+  private func stacked(_ size: CGSize) -> some View {
+    VStack(spacing: 0) {
+      HStack(alignment: .top, spacing: 14) {
         PosterArt(
           url: course.artURL,
           seed: course.title,
-          fallback: printed ? PosterShape.portraitArt : PosterShape.landscape,
-          window: printed ? PosterShape.portrait : PosterShape.landscape,
-          targetWidth: 640
+          fallback: PosterShape.portraitArt,
+          window: PosterShape.portrait,
+          width: CourseLayout.heroWidth(for: size.width),
+          targetWidth: 420
         )
         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         .overlay {
@@ -51,44 +82,80 @@ struct CourseView: View {
             .stroke(Palette.line, lineWidth: 1)
         }
 
-        VStack(alignment: .leading, spacing: 8) {
-          if !course.role.isEmpty {
-            Text(Format.roleLabel(course.role))
-              .font(.caption2.weight(.heavy))
-              .foregroundStyle(Palette.bg)
-              .padding(.horizontal, 8)
-              .padding(.vertical, 3)
-              .background(Palette.brand, in: Capsule())
-          }
-          Text(course.title)
-            .font(.headline)
-            .foregroundStyle(Palette.ink)
-            .fixedSize(horizontal: false, vertical: true)
-          Text(meta)
-            .font(.caption2)
-            .foregroundStyle(Palette.inkFaint)
-            .fixedSize(horizontal: false, vertical: true)
-
-          if let first = course.lessons.first {
-            Button {
-              player.play(first, in: course.lessons)
-            } label: {
-              Label("Play", systemImage: "play.fill")
-                .font(.caption.weight(.bold))
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 8)
-                .background(Palette.brand, in: Capsule())
-                .foregroundStyle(Palette.bg)
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Play \(course.title) from the first lesson")
-            .padding(.top, 2)
-          }
-        }
+        words(pinned: false)
       }
-      .padding(14)
+      .padding(16)
+
+      Rectangle()
+        .fill(Palette.line)
+        .frame(height: 1)
+
+      lessons(compact: false)
     }
-    .frame(width: width)
+  }
+
+  // MARK: - Words
+
+  /// Role, title, the numbers and *Play* — the block that stays put while the
+  /// lessons move. Pinned (landscape) the button rides the top line, which keeps
+  /// the list tall; stacked (portrait) it closes the block under the words.
+  private func words(pinned: Bool) -> some View {
+    VStack(alignment: .leading, spacing: 8) {
+      if pinned {
+        HStack(spacing: 8) {
+          roleBadge
+          Spacer(minLength: 8)
+          playButton(compact: true)
+        }
+      } else {
+        roleBadge
+      }
+
+      Text(course.title)
+        .font(.headline)
+        .foregroundStyle(Palette.ink)
+        .fixedSize(horizontal: false, vertical: true)
+
+      Text(meta)
+        .font(.caption2)
+        .foregroundStyle(Palette.inkFaint)
+        .fixedSize(horizontal: false, vertical: true)
+
+      if !pinned {
+        playButton(compact: false)
+          .padding(.top, 2)
+      }
+    }
+    .frame(maxWidth: .infinity, alignment: .leading)
+  }
+
+  @ViewBuilder private var roleBadge: some View {
+    if !course.role.isEmpty {
+      Text(Format.roleLabel(course.role))
+        .font(.caption2.weight(.heavy))
+        .foregroundStyle(Palette.bg)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 3)
+        .background(Palette.brand, in: Capsule())
+    }
+  }
+
+  @ViewBuilder private func playButton(compact: Bool) -> some View {
+    if let first = course.lessons.first {
+      Button {
+        player.play(first, in: course.lessons)
+      } label: {
+        Label("Play", systemImage: "play.fill")
+          .font(.caption.weight(.bold))
+          .padding(.horizontal, compact ? 14 : 0)
+          .frame(maxWidth: compact ? nil : CGFloat.infinity)
+          .padding(.vertical, compact ? 7 : 8)
+          .background(Palette.brand, in: Capsule())
+          .foregroundStyle(Palette.bg)
+      }
+      .buttonStyle(.plain)
+      .accessibilityLabel("Play \(course.title) from the first lesson")
+    }
   }
 
   private var meta: String {
@@ -97,6 +164,8 @@ struct CourseView: View {
     if course.seconds > 0 { parts.append(Format.clock(course.seconds)) }
     return parts.joined(separator: " · ")
   }
+
+  // MARK: - The list that scrolls
 
   private func lessons(compact: Bool) -> some View {
     ScrollView {

@@ -188,13 +188,17 @@ on the phone itself, into the same folders the desktop build writes.
   border, solid when it is complete. A card is its poster and nothing else — no
   scrim over the art, no band under it — and the grid draws every card at the
   same window shape, so one odd poster cannot make a row ragged. **A course page
-  is two columns**: the poster stays anchored on the left with the role, title,
-  lesson count and a *Play* button under it, and the lessons scroll beside it, so
-  the art never leaves the screen while a long course is read (`Views/CourseView.swift`
-  — the column takes a little over a third of the width, floored so a phone still
-  holds a readable title and capped so an iPad's page is not a poster gallery;
-  below roughly 400pt of lesson room the rows turn **compact**, a smaller still
-  and a taller title, instead of squeezing the words out).
+  is two columns only in landscape** (`Views/CourseView.swift`, geometry in
+  `Support/CourseLayout.swift`): the poster fills the left edge whole — the column
+  is exactly as wide as the art needs at its own shape to fill the height, capped
+  at 46% of the width — and it does not scroll; the title, count and *Play* pin
+  above the right-hand column and the lessons scroll under them. Portrait stacks
+  instead, because a poster column there eats the list: a poster a third of the
+  width (floored, capped, never cropped because it is drawn at its own shape)
+  beside the role, title, numbers and a full-width *Play*, then the lessons in a
+  scrolling box that takes the rest of the page. Below roughly 440pt of lesson
+  room the rows turn **compact**, a smaller still and a taller title, instead of
+  squeezing the words out.
 - **Downloading.** `SegmentDownloader` fetches the HLS parts four at a time under
   one shared polite budget and merges them into one MPEG-TS file, which is what
   lands in the library — nothing is re-encoded, because iOS cannot demux a
