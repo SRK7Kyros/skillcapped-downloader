@@ -298,19 +298,32 @@ on the phone itself, into the same folders the desktop build writes.
   seconds of a picture that is **really advancing** — `timeControlStatus`, not the
   rate we asked for: an item that cannot play holds its requested rate at 1 while
   the screen shows a still frame, which hid the transport (the only way out of the
-  player) four seconds in — and a rate button cycling 1×/1.25×/1.5×/2×. The chrome is
-  **one row floating over the picture**, in the order a thumb expects: skip back
-  ten, play/pause, skip forward ten, the timeline, the rate, then the queue's
-  previous and next — with the elapsed and remaining times flanking the timeline
-  while the row is wide enough to hold all three (a phone held upright gives that
-  room to the track instead), and **Picture in Picture alone in the screen's
-  top-right corner**, over the close button and the lesson's name. It reads the
-  window's own safe area and width for its insets — the picture is drawn through
-  them — so it floats clear of the island and the home indicator; a full-width
-  drawer raised from the bottom of the screen was what made an earlier build's
-  chrome read as a system sheet. `PlayerChromeUITests` pins the shape: every
-  control but Picture in Picture shares one band of the screen, upright and on its
-  side. Picture in
+  player) four seconds in — and a rate button cycling 1×/1.25×/1.5×/2×. The chrome
+  has **two shapes**, and the whole transport floats over the picture in the order
+  a thumb expects: skip back ten, play/pause, skip forward ten, the timeline, the
+  rate, then the queue's previous and next. A wide window — a phone on its side, a
+  whole iPad — keeps it all in **one row**, with the elapsed and remaining times
+  flanking the timeline. A portrait phone cannot fit that *and* both readouts, so
+  `PlayerChromeLayout` (below 540 points) floats the rate and the two queue steps
+  **above the bar as their own round buttons**, left to right in the order they had
+  in the row, and the bar keeps the three a thumb reaches for plus a timeline with
+  room for **both times** — the width the moved controls gave back. **Picture in
+  Picture alone sits in the screen's top-right corner**, over the close button and
+  the lesson's name. It reads the window's own safe area and width for its insets —
+  the picture is drawn through them — so it floats clear of the island and the home
+  indicator; a full-width drawer raised from the bottom of the screen was what made
+  an earlier build's chrome read as a system sheet. `PlayerChromeUITests` pins both
+  shapes: upright the three floating controls share a band above the bar's, on its
+  side every control but Picture in Picture shares one band — and both cases insist
+  the elapsed and remaining readouts are on screen. **The player takes the sound
+  over too** (`Support/AudioSession.swift`): an app that says nothing runs on the
+  `soloAmbient` category, which the ringer switch silences and which stops at the
+  lock screen — so a lesson played with the phone on silent had no sound at all,
+  picture advancing and speaker silent, and the declared `UIBackgroundModes: audio`
+  could not help. The category is `.playback` in the `.moviePlayback` mode,
+  activated when the player opens and given back with `notifyOthersOnDeactivation`
+  when it closes.
+ Picture in
   picture, AirPlay and hardware decoding are still the platform's own
   (`Support/PictureInPicture.swift` wraps `AVPictureInPictureController` around the
   layer). The maths behind every gesture lives in `Support/PlayerGestures.swift`

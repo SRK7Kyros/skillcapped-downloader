@@ -248,6 +248,7 @@ struct PlayerScreen: View {
   /// A lesson in iCloud Drive may still be a placeholder, which `AVPlayer` cannot
   /// open: ask iCloud for it and play as soon as the bytes land.
   private func begin() {
+    AudioSession.activate()
     load(current)
     showChrome()
   }
@@ -408,6 +409,7 @@ struct PlayerScreen: View {
     pictureInPicture.detach()
     chromeTask?.cancel()
     hudTask?.cancel()
+    AudioSession.deactivate()
   }
 
   private func tearDown() {
@@ -463,10 +465,15 @@ struct PlayerScreen: View {
 }
 
 /// The transport, floating over the picture rather than a drawer over the bottom
-/// of it: one row, in the order a thumb expects — skip back, play, skip forward,
-/// the timeline, the speed, the queue's neighbours — with the Picture in Picture
+/// of it, in the order a thumb expects — skip back, play, skip forward, the
+/// timeline, the speed, the queue's neighbours — with the Picture in Picture
 /// switch alone in the screen's top-right corner, where it no longer competes
 /// with the controls that are touched every few seconds.
+///
+/// It has two shapes. A wide window holds all of it in one row. A portrait phone
+/// cannot, so the rate and the two queue steps float above the bar as their own
+/// buttons, and the bar keeps the three controls a thumb reaches for plus a
+/// timeline wide enough for both readouts (`PlayerChromeLayout`).
 private struct Chrome: View {
   let lesson: Lesson
   let playing: Bool
@@ -494,9 +501,14 @@ private struct Chrome: View {
 
       Spacer(minLength: 0)
 
-      bar
-        .padding(.horizontal, 10)
-        .padding(.bottom, insets.bottom + 8)
+      VStack(alignment: .trailing, spacing: 10) {
+        if floatsControls {
+          floating
+        }
+        bar
+      }
+      .padding(.horizontal, 10)
+      .padding(.bottom, insets.bottom + 8)
     }
   }
 
@@ -513,11 +525,16 @@ private struct Chrome: View {
     windowScene?.keyWindow?.safeAreaInsets ?? .zero
   }
 
-  /// The two times are only worth their room on a wide row; a phone held
-  /// upright gives that width to the timeline, which is the control that needs
-  /// it, so the readouts step aside there.
-  private var showsTimes: Bool {
-    (windowScene?.keyWindow?.bounds.width ?? 0) >= 540
+  private var floatsControls: Bool {
+    PlayerChromeLayout.floatsControls(width: windowScene?.keyWindow?.bounds.width ?? 0)
+  }
+
+  private var rateLabel: String {
+    rate == 1 ? "1×" : String(format: "%g×", rate)
+  }
+
+  private var rateAccessibilityLabel: String {
+    "Playback speed, " + (rate == 1 ? "normal" : String(format: "%g", rate) + " times")
   }
 
   /// Floating too: a close button and the name of the lesson at the left, the
@@ -565,49 +582,51 @@ private struct Chrome: View {
     }
   }
 
+  /// The three controls a portrait phone cannot fit in the bar, each one its own
+  /// round button above it and sitting where it used to be in the row, so the
+  /// thumb finds them in the same place it left them.
+  private var floating: some View {
+    HStack(spacing: 12) {
+      floatingButton {
+        Button(action: changeRate) {
+          Text(rateLabel)
+            .font(.system(size: 12, weight: .heavy, design: .rounded))
+            .foregroundStyle(.white.opacity(rate == 1 ? 0.78 : 1))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(rateAccessibilityLabel)
+      }
+
+      floatingButton { previous }
+      floatingButton { next }
+    }
+  }
+
+  private func floatingButton<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+    content()
+      .frame(width: 42, height: 42)
+      .background(.black.opacity(0.45), in: Circle())
+      .overlay { Circle().stroke(.white.opacity(0.12), lineWidth: 1) }
+      .shadow(color: .black.opacity(0.35), radius: 10, y: 3)
+  }
+
   /// One row: every control at the same height, and the timeline the only thing
   /// that stretches.
   private var bar: some View {
     HStack(spacing: 2) {
       PlayerButton(glyph: "gobackward.10", size: 16, label: "Back 10 seconds") { skip(-10) }
 
-      Button(action: togglePlay) {
-        Image(systemName: playing ? "pause.fill" : "play.fill")
-          .font(.system(size: 19, weight: .bold))
-          .foregroundStyle(.white)
-          .frame(width: 34, height: 34)
-          .contentShape(Rectangle())
-      }
-      .buttonStyle(.plain)
-      .accessibilityLabel(playing ? "Pause" : "Play")
+      playButton
 
       PlayerButton(glyph: "goforward.10", size: 16, label: "Forward 10 seconds") { skip(10) }
 
       timeline
 
-      Button(action: changeRate) {
-        Text(rate == 1 ? "1×" : String(format: "%g×", rate))
-          .font(.system(size: 11, weight: .heavy, design: .rounded))
-          .foregroundStyle(.white.opacity(rate == 1 ? 0.75 : 1))
-          .frame(width: 34, height: 26)
-          .background(Capsule().fill(.white.opacity(rate == 1 ? 0.1 : 0.2)))
+      if !floatsControls {
+        rateChip
+        previous
+        next
       }
-      .buttonStyle(.plain)
-      .accessibilityLabel("Playback speed, \(rate == 1 ? "normal" : String(format: "%g", rate) + " times")")
-
-      PlayerButton(
-        glyph: "backward.end.fill",
-        size: 13,
-        disabled: !canStepBack,
-        label: "Previous lesson"
-      ) { step(false) }
-
-      PlayerButton(
-        glyph: "forward.end.fill",
-        size: 13,
-        disabled: !canStepForward,
-        label: "Next lesson"
-      ) { step(true) }
     }
     .padding(.horizontal, 10)
     .padding(.vertical, 5)
@@ -622,31 +641,70 @@ private struct Chrome: View {
     .shadow(color: .black.opacity(0.35), radius: 14, y: 4)
   }
 
-  /// The track, with the elapsed time on its left and the time left on its
-  /// right while the row is wide enough to hold all three.
+  private var playButton: some View {
+    Button(action: togglePlay) {
+      Image(systemName: playing ? "pause.fill" : "play.fill")
+        .font(.system(size: 19, weight: .bold))
+        .foregroundStyle(.white)
+        .frame(width: 34, height: 34)
+        .contentShape(Rectangle())
+    }
+    .buttonStyle(.plain)
+    .accessibilityLabel(playing ? "Pause" : "Play")
+  }
+
+  private var rateChip: some View {
+    Button(action: changeRate) {
+      Text(rateLabel)
+        .font(.system(size: 11, weight: .heavy, design: .rounded))
+        .foregroundStyle(.white.opacity(rate == 1 ? 0.75 : 1))
+        .frame(width: 34, height: 26)
+        .background(Capsule().fill(.white.opacity(rate == 1 ? 0.1 : 0.2)))
+    }
+    .buttonStyle(.plain)
+    .accessibilityLabel(rateAccessibilityLabel)
+  }
+
+  private var previous: some View {
+    PlayerButton(
+      glyph: "backward.end.fill",
+      size: 13,
+      disabled: !canStepBack,
+      label: "Previous lesson"
+    ) { step(false) }
+  }
+
+  private var next: some View {
+    PlayerButton(
+      glyph: "forward.end.fill",
+      size: 13,
+      disabled: !canStepForward,
+      label: "Next lesson"
+    ) { step(true) }
+  }
+
+  /// The track with the elapsed time on its left and the time left on its right.
   private var timeline: some View {
     HStack(spacing: 8) {
-      if showsTimes {
-        time(PlayerMath.clock(position), width: 38, alignment: .trailing)
-      }
+      time(PlayerMath.clock(position), width: 38, alignment: .trailing, id: "player.elapsed")
 
       PlayerScrubber(position: position, duration: duration, onScrub: scrub, onCommit: commit)
         .frame(maxWidth: .infinity)
 
-      if showsTimes {
-        time(
-          duration > 0 ? "−" + PlayerMath.clock(max(duration - position, 0)) : "--:--",
-          width: 44,
-          alignment: .leading
-        )
-      }
+      time(
+        duration > 0 ? "−" + PlayerMath.clock(max(duration - position, 0)) : "--:--",
+        width: 44,
+        alignment: .leading,
+        id: "player.remaining"
+      )
     }
   }
 
-  private func time(_ text: String, width: CGFloat, alignment: Alignment) -> some View {
+  private func time(_ text: String, width: CGFloat, alignment: Alignment, id: String) -> some View {
     Text(text)
       .font(.system(size: 11, weight: .semibold, design: .rounded).monospacedDigit())
       .foregroundStyle(.white.opacity(0.82))
       .frame(width: width, alignment: alignment)
+      .accessibilityIdentifier(id)
   }
 }
