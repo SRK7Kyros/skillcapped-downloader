@@ -295,7 +295,10 @@ on the phone itself, into the same folders the desktop build writes.
   sound** (a write goes through the `UISlider` inside a hidden `MPVolumeView`,
   since `AVAudioSession.outputVolume` is read-only and hardware buttons are
   otherwise the only way), one tap for the chrome, which hides itself after four
-  seconds of playback, and a rate button cycling 1×/1.25×/1.5×/2×. The chrome is
+  seconds of a picture that is **really advancing** — `timeControlStatus`, not the
+  rate we asked for: an item that cannot play holds its requested rate at 1 while
+  the screen shows a still frame, which hid the transport (the only way out of the
+  player) four seconds in — and a rate button cycling 1×/1.25×/1.5×/2×. The chrome is
   **one row floating over the picture**, in the order a thumb expects: skip back
   ten, play/pause, skip forward ten, the timeline, the rate, then the queue's
   previous and next — with the elapsed and remaining times flanking the timeline
