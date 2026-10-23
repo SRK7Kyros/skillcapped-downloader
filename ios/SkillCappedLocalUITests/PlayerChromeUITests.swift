@@ -40,6 +40,8 @@ final class PlayerChromeUITests: XCTestCase {
   /// Every control but Picture in Picture sits in one band of the screen, and
   /// Picture in Picture is up in the top-right corner on its own.
   private func assertOneRow(in app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
+    showTransport(in: app)
+
     let back = app.buttons["Back 10 seconds"]
     let forward = app.buttons["Forward 10 seconds"]
     let speed = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Playback speed")).firstMatch
@@ -48,8 +50,10 @@ final class PlayerChromeUITests: XCTestCase {
     let row = [back, forward, speed, previous, next]
 
     for element in row {
-      XCTAssertTrue(element.waitForExistence(timeout: 10), "\(element) should be in the transport", file: file, line: line)
+      XCTAssertTrue(element.waitForExistence(timeout: 5), "\(element) should be in the transport", file: file, line: line)
     }
+
+    guard row.allSatisfy(\.exists) else { return }
 
     let middle = row.map { $0.frame.midY }
     let spread = (middle.max() ?? 0) - (middle.min() ?? 0)
@@ -71,5 +75,14 @@ final class PlayerChromeUITests: XCTestCase {
       file: file,
       line: line
     )
+  }
+
+  /// A single tap on the picture is how a person brings the chrome back once it
+  /// has faded: it only goes away while the video is really advancing, so the
+  /// tap cannot talk the test out of a transport it never had.
+  private func showTransport(in app: XCUIApplication) {
+    guard !app.buttons["Back 10 seconds"].exists else { return }
+    app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.35)).tap()
+    _ = app.buttons["Back 10 seconds"].waitForExistence(timeout: 5)
   }
 }

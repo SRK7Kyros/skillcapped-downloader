@@ -435,7 +435,11 @@ struct PlayerScreen: View {
     chromeTask?.cancel()
     chromeTask = Task { @MainActor in
       try? await Task.sleep(nanoseconds: 4_000_000_000)
-      guard !Task.isCancelled, playing, drag == nil else { return }
+      // Only a picture that is really advancing takes the chrome away: `playing`
+      // is the intent a tap set, not the fact, so a lesson that failed to open —
+      // or a player stuck at a standstill — would otherwise hide the transport
+      // over a still frame nobody can scrub.
+      guard !Task.isCancelled, drag == nil, (player?.rate ?? 0) > 0 else { return }
       withAnimation(.easeOut(duration: 0.25)) { chrome = false }
     }
   }
