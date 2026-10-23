@@ -159,9 +159,9 @@ final class PlayerChromeUITests: XCTestCase {
   private func waitForLandscape(_ app: XCUIApplication) {
     let deadline = Date().addingTimeInterval(10)
     while Date() < deadline, app.frame.width <= app.frame.height {
-      usleep(100_000)
+      Thread.sleep(forTimeInterval: 0.1)
     }
-    usleep(600_000)
+    Thread.sleep(forTimeInterval: 0.6)
   }
 
   /// A single tap on the picture is how a person brings the chrome back once it
