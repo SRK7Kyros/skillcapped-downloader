@@ -15,12 +15,9 @@ struct PosterArt: View {
   /// Shape before the art loads: `PosterShape.portrait` for a course card,
   /// `PosterShape.landscape` for a lesson.
   var fallback: CGFloat = PosterShape.landscape
-  /// A fixed width for a box inside a row; `nil` takes the width it is offered.
+  /// A fixed width for a box inside a row; `nil` takes the width it is offered
+  /// and keeps its shape at whatever height that needs.
   var width: CGFloat?
-  /// A fixed height for a box that fills its width — a hero, whose art is a
-  /// backdrop with the title printed over it and is cropped on purpose. Ignored
-  /// when `width` is set.
-  var height: CGFloat?
   /// How wide a local frame is generated, in points.
   var targetWidth: CGFloat = 700
   var glyphSize: CGFloat = 28
@@ -51,10 +48,6 @@ struct PosterArt: View {
     if let width {
       Color.clear
         .frame(width: width, height: PosterShape.height(width: width, ratio: ratio))
-    } else if let height {
-      Color.clear
-        .frame(maxWidth: .infinity)
-        .frame(height: height)
     } else {
       Color.clear
         .aspectRatio(ratio, contentMode: .fit)

@@ -12,13 +12,6 @@ struct CourseCard: View {
         targetWidth: 560,
         glyphSize: 22
       )
-      .overlay(alignment: .bottom) {
-        LinearGradient(
-          colors: [.clear, Palette.bg.opacity(0.92)],
-          startPoint: .center,
-          endPoint: .bottom
-        )
-      }
       .overlay(alignment: .topLeading) {
         if !course.role.isEmpty {
           Text(Format.roleLabel(course.role))
@@ -35,7 +28,7 @@ struct CourseCard: View {
         Text(course.title)
           .font(.subheadline.weight(.semibold))
           .foregroundStyle(Palette.ink)
-          .lineLimit(2)
+          .lineLimit(2, reservesSpace: true)
           .multilineTextAlignment(.leading)
           .frame(maxWidth: .infinity, alignment: .leading)
 

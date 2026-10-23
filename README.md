@@ -169,7 +169,10 @@ on the phone itself, into the same folders the desktop build writes.
   for thirty minutes. The catalogue is browsable before a byte is on disk: covers
   come from the CDN, search is the same folded match the rest of the app uses, and
   the role chips filter. A course that is already here wears the console's green
-  border, solid when it is complete.
+  border, solid when it is complete. A card is its poster and nothing else — no
+  scrim over the art, no band under it — and the course page opens with the same
+  poster **whole**, at its own shape, with the role, title and lesson count under
+  it rather than printed across the art.
 - **Downloading.** `SegmentDownloader` fetches the HLS parts four at a time under
   one shared polite budget and merges them into one MPEG-TS file, which is what
   lands in the library — nothing is re-encoded, because iOS cannot demux a
@@ -275,7 +278,9 @@ on the phone itself, into the same folders the desktop build writes.
   576×912 course card, a 1920×1080 still — because cropping a portrait poster into
   a 16:9 strip throws away two thirds of it, including the title the site printed
   at the top; until then it stands in with the shape that kind of art usually has,
-  so a grid never reflows under the tap (`Support/PosterShape.swift`).
+  so a grid never reflows under the tap (`Support/PosterShape.swift`). There is no
+  fixed-height variant: a card and a course header are both the art's own box, so
+  nothing is cropped and no band of page background is left inside one.
 - **Folder access.** `Choose a folder…` opens the system picker, so iCloud Drive,
   On My iPad and another app's folder all work; the pick becomes a security-scoped
   bookmark and the next launch reopens it. Two things refuse it otherwise, and

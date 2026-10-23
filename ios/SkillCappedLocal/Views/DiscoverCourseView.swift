@@ -76,22 +76,18 @@ struct DiscoverCourseView: View {
     }
   }
 
+  /// The poster at its own shape, whole — a course card is portrait, so the
+  /// header is tall rather than a cropped band — with the course's words under
+  /// it instead of printed over the art.
   private var header: some View {
-    PosterArt(
-      url: course.thumbURL,
-      seed: course.title,
-      fallback: PosterShape.portrait,
-      height: 208,
-      targetWidth: 1_100
-    )
-    .overlay(alignment: .bottom) {
-      LinearGradient(
-        colors: [.clear, Palette.bg.opacity(0.55), Palette.bg],
-        startPoint: .top,
-        endPoint: .bottom
+    VStack(alignment: .leading, spacing: 12) {
+      PosterArt(
+        url: course.thumbURL,
+        seed: course.title,
+        fallback: PosterShape.portrait,
+        targetWidth: 1_100
       )
-    }
-    .overlay(alignment: .bottomLeading) {
+
       VStack(alignment: .leading, spacing: 8) {
         if !course.role.isEmpty {
           Text(Format.roleLabel(course.role))
@@ -120,7 +116,6 @@ struct DiscoverCourseView: View {
         .foregroundStyle(Palette.inkDim)
       }
       .padding(.horizontal, 16)
-      .padding(.bottom, 12)
     }
   }
 

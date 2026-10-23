@@ -17,13 +17,6 @@ struct CatalogCourseCard: View {
         fallback: PosterShape.portrait,
         glyphSize: 24
       )
-      .overlay(alignment: .bottom) {
-        LinearGradient(
-          colors: [.clear, Palette.bg.opacity(0.92)],
-          startPoint: .center,
-          endPoint: .bottom
-        )
-      }
       .overlay(alignment: .topLeading) {
         HStack(spacing: 4) {
           if !item.role.isEmpty {
@@ -50,7 +43,7 @@ struct CatalogCourseCard: View {
         Text(item.title)
           .font(.subheadline.weight(.semibold))
           .foregroundStyle(Palette.ink)
-          .lineLimit(2)
+          .lineLimit(2, reservesSpace: true)
           .multilineTextAlignment(.leading)
           .frame(maxWidth: .infinity, alignment: .leading)
 

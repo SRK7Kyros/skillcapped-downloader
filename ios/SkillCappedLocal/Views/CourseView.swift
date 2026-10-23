@@ -39,22 +39,17 @@ struct CourseView: View {
     .navigationBarTitleDisplayMode(.inline)
   }
 
+  /// The first lesson's frame at its own shape, whole, with the course's words
+  /// under it rather than printed over the art.
   private var header: some View {
-    PosterArt(
-      url: course.bannerURL,
-      seed: course.title,
-      fallback: PosterShape.landscape,
-      height: 208,
-      targetWidth: 1_100
-    )
-    .overlay(alignment: .bottom) {
-      LinearGradient(
-        colors: [.clear, Palette.bg.opacity(0.55), Palette.bg],
-        startPoint: .top,
-        endPoint: .bottom
+    VStack(alignment: .leading, spacing: 12) {
+      PosterArt(
+        url: course.bannerURL,
+        seed: course.title,
+        fallback: PosterShape.landscape,
+        targetWidth: 1_100
       )
-    }
-    .overlay(alignment: .bottomLeading) {
+
       VStack(alignment: .leading, spacing: 8) {
         if !course.role.isEmpty {
           Text(Format.roleLabel(course.role))
@@ -81,7 +76,6 @@ struct CourseView: View {
         .foregroundStyle(Palette.inkDim)
       }
       .padding(.horizontal, 16)
-      .padding(.bottom, 12)
     }
   }
 }
