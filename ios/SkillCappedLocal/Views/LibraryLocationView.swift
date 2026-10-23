@@ -27,6 +27,39 @@ struct LibraryLocationView: View {
       Form {
         Section {
           Button {
+            store.choose(store.documentsURL)
+            dismiss()
+          } label: {
+            HStack(spacing: 12) {
+              Image(systemName: "folder.fill")
+                .font(.body)
+                .foregroundStyle(Palette.brand)
+                .frame(width: 22)
+              VStack(alignment: .leading, spacing: 2) {
+                Text("SkillCapped Local")
+                  .foregroundStyle(Palette.ink)
+                Text(FilesPlace.ownFolder)
+                  .font(.caption)
+                  .foregroundStyle(Palette.inkFaint)
+                  .lineLimit(1)
+              }
+              Spacer(minLength: 8)
+              if store.usingOwnFolder {
+                Image(systemName: "checkmark.circle.fill")
+                  .foregroundStyle(Palette.brand)
+              }
+            }
+          }
+          .buttonStyle(.plain)
+          .accessibilityHint("Download and read lessons in the app's own folder")
+        } header: {
+          Text("The app's own folder")
+        } footer: {
+          Text("Always there, and no permission needed: Files › \(FilesPlace.ownFolder). A lesson downloaded here lands in it, and coming back to it moves the lessons collected elsewhere into it.")
+        }
+
+        Section {
+          Button {
             openPicker()
           } label: {
             Label("Choose a folder…", systemImage: "folder.badge.plus")
@@ -53,7 +86,7 @@ struct LibraryLocationView: View {
             }
           }
         } header: {
-          Text("On My iPhone › SkillCapped Local")
+          Text("In the app's folder")
         } footer: {
           Text("Every folder in there holding Courses, Videos or Commentaries. The app reads it in place, and picking one moves anything it already downloaded into it.")
         }
@@ -107,7 +140,7 @@ struct LibraryLocationView: View {
         Section {
           Button("Scan again") { reload() }
           if store.hasFolder {
-            Button("Forget folder", role: .destructive) {
+            Button("Back to the app's folder") {
               store.forget()
               reload()
             }
@@ -210,9 +243,9 @@ struct LibraryLocationView: View {
   private func path(_ folder: URL) -> String {
     let root = store.documentsURL.standardizedFileURL.path
     let full = folder.standardizedFileURL.path
-    guard full != root else { return "On My iPhone › SkillCapped Local" }
+    guard full != root else { return FilesPlace.ownFolder }
     guard full.hasPrefix(root + "/") else { return full }
-    return String(full.dropFirst(root.count + 1))
+    return "\(FilesPlace.ownFolder) › \(String(full.dropFirst(root.count + 1)))"
   }
 
   private func isDocuments(_ folder: URL) -> Bool {

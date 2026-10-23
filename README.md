@@ -188,10 +188,16 @@ on the phone itself, into the same folders the desktop build writes.
 - **Continue watching.** Every position is remembered against the catalogue id,
   so it survives a re-download or a move between folders, and the browse screen
   leads with the lessons left unfinished.
-- **Where it writes.** Downloads land in the library folder the app is pointed
-  at, so the browser finds them immediately; with no folder chosen they go to the
-  app's own Documents folder, which is the same place the desktop library lands
-  when you use **On My iPhone › SkillCapped Local**.
+- **Where it writes — a folder you can see.** The app's own library is its
+  Documents folder, `Files › On My iPhone › SkillCapped Local`, and it exists from
+  the first launch: `LibraryBootstrap` creates `Courses/`, `Videos/` and
+  `Commentaries/` there, so the folder Files shows is obviously the one lessons land
+  in, and every screen names it that way (`FilesPlace`, never a
+  `/var/mobile/Containers/...` path). Nothing but small state — the queue,
+  preferences, playback positions — lives in the app's Application Support folder;
+  no lesson ever does. Picking another folder anywhere in Files (iCloud Drive
+  included) points the library there instead, and the app is never without one:
+  going back to the app's own folder is a move, not a wipe.
 - **Changing folders moves the library.** A pick is never only "look somewhere
   else": whatever the app already has under the previous folder is carried into
   the new one (`Model/LibraryMigration.swift`), so the app keeps one library
@@ -299,11 +305,16 @@ on the phone itself, into the same folders the desktop build writes.
   the system picker appears — it does in the simulator, screenshot attached to the
   run). A refusal
   names the iOS version and build it came from, so a device-side refusal diagnoses
-  itself. The fallback is unchanged: with `UIFileSharingEnabled` the app's own
-  Documents folder is visible as **On My iPhone › SkillCapped Local**, and
-  `LibraryLocator` lists every folder in there holding `Courses`, `Videos` or
-  `Commentaries`. A single candidate is adopted on launch, several are offered in
-  the `Library folder` sheet. Picking a folder that merely *contains* the library
+  itself. The app's own folder needs no picker at all: with `UIFileSharingEnabled`
+  it is the app's Documents folder, visible as **On My iPhone › SkillCapped
+  Local**, and it is the library from the first launch — `LibraryBootstrap`
+  creates `Courses/`, `Videos/` and `Commentaries/` in it, so Files shows where a
+  lesson lands before any exists, and `LibraryStore` adopts the folder itself
+  (adoption is by identity, not by content, because freshly made buckets are
+  empty). `LibraryLocator` lists every folder in there holding a library; a single
+  candidate is adopted on launch, several are offered in the `Library folder`
+  sheet, and with none the app stays on its own folder rather than on no library
+  at all. Picking a folder that merely *contains* the library
   (iCloud Drive's root, a Downloads folder) adopts the only library one level down
   (`ExternalFolderTests` pins both, and that the bookmark survives a relaunch).
   `Settings` reports what was scanned, how large it is and whether it lives in

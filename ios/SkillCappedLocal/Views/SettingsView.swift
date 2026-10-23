@@ -13,13 +13,8 @@ struct SettingsView: View {
       Form {
         Section {
           LabeledContent("Name", value: store.rootName ?? "—")
+          LabeledContent("In Files", value: store.filesLocation)
           LabeledContent("Source", value: store.isCloudRoot ? "iCloud Drive" : "On this device")
-          if let path = store.scan?.rootPath {
-            Text(path)
-              .font(.caption2)
-              .foregroundStyle(Palette.inkFaint)
-              .textSelection(.enabled)
-          }
           if let moving = store.moving {
             LabeledContent("Moving", value: moving.label)
           } else if let message = store.message {
@@ -30,12 +25,14 @@ struct SettingsView: View {
           }
           Button("Choose folder") { picking = true }
             .disabled(store.moving != nil)
-          Button("Forget folder", role: .destructive) { store.forget() }
-            .disabled(!store.hasFolder || store.moving != nil)
+          if store.hasFolder {
+            Button("Back to the app's folder") { store.forget() }
+              .disabled(store.moving != nil)
+          }
         } header: {
           Text("Folder")
         } footer: {
-          Text("Any folder works — iCloud Drive, On My iPad, another app's folder — as does one inside Files › On My iPhone › SkillCapped Local. Choosing a new folder moves the lessons already on the phone into it.")
+          Text("The app downloads into Files › \(FilesPlace.ownFolder) unless another folder is chosen — iCloud Drive, On My iPad, another app's folder. Choosing one moves the lessons already on the phone into it.")
         }
 
         Section {
@@ -46,14 +43,10 @@ struct SettingsView: View {
           }
           LabeledContent("In the queue", value: "\(downloads.activeCount)")
           LabeledContent("On disk", value: Format.bytes(downloads.readyBytes))
-          Text(downloads.root.path)
-            .font(.caption2)
-            .foregroundStyle(Palette.inkFaint)
-            .textSelection(.enabled)
         } header: {
           Text("Downloads")
         } footer: {
-          Text("Discover fetches the site's own catalogue and pulls a lesson straight onto the phone; it lands in the library folder above.")
+          Text("Discover fetches the site's own catalogue and pulls a lesson straight onto the phone; it lands in the folder above, in the same Courses, Videos and Commentaries layout the desktop build writes.")
         }
 
         Section("Library") {

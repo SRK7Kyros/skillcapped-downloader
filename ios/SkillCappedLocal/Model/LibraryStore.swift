@@ -26,13 +26,37 @@ final class LibraryStore: ObservableObject {
   /// Lets remembered absolute paths follow their files, and restarts the queue.
   var afterMove: (@MainActor (URL, URL) -> Void)?
 
+  /// True when the library is a folder the user picked somewhere else. The app's
+  /// own folder is not "chosen", it is simply where the app lives.
   var hasFolder: Bool { scoped != nil }
+
   /// "On My iPhone › SkillCapped Local" — the one folder the app may always read,
-  /// whatever the system picker decides to allow.
+  /// whatever the system picker allows, and the default library.
   var documentsURL: URL { documents }
+
+  /// What the app reads and writes: the folder the user picked, or the app's own
+  /// folder in Files. Never nil — the app is always pointed at a library.
+  var libraryURL: URL { scoped ?? documents }
+
+  var usingOwnFolder: Bool {
+    guard let scoped else { return true }
+    return isSamePath(scoped, documents)
+  }
+
+  /// Where Files shows the library, in the words Files uses — never a sandbox
+  /// path, which reads as hidden storage to anyone who is not an Xcode user.
+  var filesLocation: String {
+    guard let scoped, !usingOwnFolder else { return FilesPlace.ownFolder }
+    if isInsideDocuments(scoped) {
+      let tail = relativePath(of: scoped)
+      return tail.isEmpty ? FilesPlace.ownFolder : "\(FilesPlace.ownFolder) › \(tail)"
+    }
+    return FilesPlace.describe(scoped, isCloud: isCloudRoot)
+  }
+
   /// Where a download is written: the library the app is pointed at, so a
   /// finished lesson lands beside the ones already there.
-  var downloadRoot: URL { scoped ?? documents }
+  var downloadRoot: URL { libraryURL }
 
   init() {
     if let demo = DemoLibrary.root() {
@@ -46,16 +70,33 @@ final class LibraryStore: ObservableObject {
     scoped?.stopAccessingSecurityScopedResource()
   }
 
-  /// Reopen the last library, or adopt the only one waiting in Documents.
+  /// Reopen the last library, or adopt the only one waiting in Documents — and
+  /// otherwise settle on the app's own folder, which always exists.
   func restore() {
     if attachSavedPath() { return }
     if attachBookmark() { return }
     refreshCandidates()
     if candidates.count == 1, let only = candidates.first {
       choose(only)
-    } else if candidates.count > 1 {
+      return
+    }
+    adoptOwnFolder()
+    // After the adopt, because scanning clears the message it starts with.
+    if candidates.count > 1 {
       message = "\(candidates.count) library folders are waiting — choose one."
     }
+  }
+
+  /// The app's own folder is a library from the first launch: Files shows the
+  /// three buckets, and a lesson downloaded here lands in them.
+  func adoptOwnFolder() {
+    LibraryBootstrap.createBuckets(in: documents)
+    scoped = nil
+    rootURL = documents
+    rootName = displayName(for: documents)
+    isCloudRoot = false
+    scan = nil
+    rescan()
   }
 
   func refreshCandidates() {
@@ -69,14 +110,23 @@ final class LibraryStore: ObservableObject {
   /// which is also what keeps an iCloud Drive folder reachable across launches.
   /// Whatever was downloaded into the previous folder is moved to this one.
   func choose(_ url: URL) {
-    let target = library(in: url).standardizedFileURL
     guard moving == nil else {
       message = "Still moving the library to the last folder — try again in a moment."
       return
     }
+    // The app's own folder is taken as itself, never through a library that
+    // happens to sit inside it.
+    let target = isSamePath(url, documents) ? documents.standardizedFileURL : library(in: url).standardizedFileURL
     let previous = downloadRoot.standardizedFileURL
     let previousScoped = scoped
 
+    if isSamePath(target, documents) {
+      UserDefaults.standard.set("", forKey: Self.pathKey)
+      UserDefaults.standard.removeObject(forKey: Self.bookmarkKey)
+      adoptOwnFolder()
+      moveLibrary(from: previous, to: target, releasing: previousScoped)
+      return
+    }
     if isInsideDocuments(target) {
       UserDefaults.standard.set(relativePath(of: target), forKey: Self.pathKey)
       UserDefaults.standard.removeObject(forKey: Self.bookmarkKey)
@@ -102,8 +152,7 @@ final class LibraryStore: ObservableObject {
   }
 
   func isCurrent(_ url: URL) -> Bool {
-    guard let scoped else { return false }
-    return scoped.standardizedFileURL.path == url.standardizedFileURL.path
+    isSamePath(libraryURL, url)
   }
 
   /// Carry the previous folder's content into the new one, off the main actor:
@@ -140,6 +189,7 @@ final class LibraryStore: ObservableObject {
     }
   }
 
+  /// Go back to the app's own folder. Nothing is ever left without a library.
   func forget() {
     guard moving == nil else {
       message = "Still moving the library to the last folder — try again in a moment."
@@ -149,16 +199,13 @@ final class LibraryStore: ObservableObject {
     UserDefaults.standard.removeObject(forKey: Self.pathKey)
     scoped?.stopAccessingSecurityScopedResource()
     scoped = nil
-    rootURL = nil
-    scan = nil
-    rootName = nil
-    isCloudRoot = false
     message = nil
     Task { await PosterStore.shared.forget() }
+    adoptOwnFolder()
   }
 
   func rescan() {
-    guard let root = scoped else { return }
+    let root = libraryURL
     scanning = true
     message = nil
     Task {
@@ -169,14 +216,20 @@ final class LibraryStore: ObservableObject {
       scan = result
       scanning = false
       if result.isEmpty, moving == nil {
-        message = "No lessons found. Point the app at the folder that holds Courses, Videos and Commentaries."
+        message = usingOwnFolder
+          ? "Nothing here yet. A lesson fetched in Discover lands in this folder, and one copied into it from Files is read in place."
+          : "No lessons found. Point the app at the folder that holds Courses, Videos and Commentaries."
       }
     }
   }
 
   private func attachSavedPath() -> Bool {
     guard let relative = UserDefaults.standard.string(forKey: Self.pathKey) else { return false }
-    let url = relative.isEmpty ? documents : documents.appendingPathComponent(relative, isDirectory: true)
+    guard !relative.isEmpty else {
+      adoptOwnFolder()
+      return true
+    }
+    let url = documents.appendingPathComponent(relative, isDirectory: true)
     guard FileManager.default.isReadableFile(atPath: url.path) else {
       UserDefaults.standard.removeObject(forKey: Self.pathKey)
       return false

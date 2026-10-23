@@ -85,7 +85,6 @@ struct RootView: View {
             } label: {
               Image(systemName: "folder")
             }
-            .disabled(!store.hasFolder)
             .accessibilityLabel("Library folder")
           }
           ToolbarItem(placement: .topBarTrailing) {
@@ -160,7 +159,7 @@ private struct WelcomeView: View {
         .font(.largeTitle.weight(.bold))
         .foregroundStyle(Palette.ink)
 
-      Text("Copy the folder the downloader writes to — the one holding Courses, Videos and Commentaries — into this app's folder in Files (On My iPhone › SkillCapped Local), or choose it wherever it already lives, iCloud Drive included. The app reads it in place: nothing is copied again by the app.")
+      Text("Lessons live in the app's own folder — Files › \(FilesPlace.ownFolder) — or in whichever folder you choose, iCloud Drive included. The app reads it in place: nothing is copied again by the app.")
         .font(.subheadline)
         .foregroundStyle(Palette.inkDim)
         .fixedSize(horizontal: false, vertical: true)
