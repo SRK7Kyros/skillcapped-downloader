@@ -59,7 +59,8 @@ struct CatalogCourseCard: View {
         .foregroundStyle(Palette.inkFaint)
       }
       .padding(.horizontal, 10)
-      .padding(.vertical, 9)
+      .padding(.top, 4)
+      .padding(.bottom, 9)
     }
     .background(Palette.surface)
     .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
