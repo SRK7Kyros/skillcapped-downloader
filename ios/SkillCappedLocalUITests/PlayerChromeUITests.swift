@@ -65,6 +65,7 @@ final class PlayerChromeUITests: XCTestCase {
     let app = openPlayer()
     XCUIDevice.shared.orientation = .landscapeLeft
     defer { XCUIDevice.shared.orientation = .portrait }
+    waitForLandscape(app)
 
     showTransport(in: app)
 
@@ -151,6 +152,16 @@ final class PlayerChromeUITests: XCTestCase {
 
   private func playButton(in app: XCUIApplication) -> XCUIElement {
     app.buttons.matching(NSPredicate(format: "label IN %@", ["Play", "Pause"])).firstMatch
+  }
+
+  /// Rotation is an animation, and the transport is re-laid out during it: reading
+  /// y positions mid-turn compares two shapes and calls the result a stack.
+  private func waitForLandscape(_ app: XCUIApplication) {
+    let deadline = Date().addingTimeInterval(10)
+    while Date() < deadline, app.frame.width <= app.frame.height {
+      usleep(100_000)
+    }
+    usleep(600_000)
   }
 
   /// A single tap on the picture is how a person brings the chrome back once it
