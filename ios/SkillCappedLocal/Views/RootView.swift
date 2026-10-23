@@ -45,13 +45,20 @@ struct RootView: View {
       PlayerScreen(lesson: lesson)
     }
     .onAppear(perform: sync)
-    .onChange(of: store.rootName) { _, _ in sync() }
+    .onChange(of: store.rootURL) { _, _ in sync() }
     .onChange(of: prefs.qualityPriority) { _, order in downloads.qualityPriority = order }
   }
 
   /// Downloads land in the library the app is pointed at, so a finished lesson
   /// is where the browser already looks.
   private func sync() {
+    store.beforeMove = { [downloads] in await downloads.hold() }
+    store.afterMove = { [downloads, store] from, to in
+      downloads.relocate(from: from, to: to)
+      downloads.root = store.downloadRoot
+      downloads.release()
+    }
+    guard store.moving == nil else { return }
     downloads.root = store.downloadRoot
     downloads.qualityPriority = prefs.qualityPriority
     downloads.onChange = { [store] in store.rescan() }
@@ -61,6 +68,11 @@ struct RootView: View {
     NavigationStack {
       content
         .background(Palette.bg.ignoresSafeArea())
+        .safeAreaInset(edge: .top, spacing: 0) {
+          if let moving = store.moving {
+            MoveBanner(move: moving)
+          }
+        }
         .navigationTitle(store.rootName ?? "SkillCapped Local")
         .navigationBarTitleDisplayMode(.inline)
         .navigationDestination(for: Course.self) { course in
@@ -104,6 +116,34 @@ struct RootView: View {
     } else {
       WelcomeView(pick: { picking = true }, message: store.message, folder: store.rootName)
     }
+  }
+}
+
+private struct MoveBanner: View {
+  let move: LibraryMigration.Progress
+
+  var body: some View {
+    HStack(spacing: 10) {
+      ProgressView()
+        .controlSize(.small)
+        .tint(Palette.brand)
+      Text(move.label)
+        .font(.caption)
+        .foregroundStyle(Palette.inkDim)
+      Spacer(minLength: 0)
+      if move.bytes > 0 {
+        Text(Format.bytes(move.bytes))
+          .font(.caption.monospacedDigit())
+          .foregroundStyle(Palette.inkFaint)
+      }
+    }
+    .padding(.horizontal, 16)
+    .padding(.vertical, 8)
+    .background(Palette.surface)
+    .overlay(alignment: .bottom) {
+      Rectangle().fill(Palette.line).frame(height: 1)
+    }
+    .accessibilityElement(children: .combine)
   }
 }
 

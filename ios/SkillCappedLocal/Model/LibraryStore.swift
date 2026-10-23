@@ -11,11 +11,20 @@ final class LibraryStore: ObservableObject {
   @Published private(set) var isCloudRoot = false
   /// Library folders the app can already read, i.e. what it found in Documents.
   @Published private(set) var candidates: [URL] = []
+  @Published private(set) var rootURL: URL?
+  /// Set while the old library's content is carried into the new one.
+  @Published private(set) var moving: LibraryMigration.Progress?
 
   private static let bookmarkKey = "library.bookmark"
   private static let pathKey = "library.relativePath"
   private let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
   private var scoped: URL?
+
+  /// Holds the download queue and lets the lesson being written finish, so
+  /// nothing is carried off half-written.
+  var beforeMove: (@MainActor () async -> Void)?
+  /// Lets remembered absolute paths follow their files, and restarts the queue.
+  var afterMove: (@MainActor (URL, URL) -> Void)?
 
   var hasFolder: Bool { scoped != nil }
   /// "On My iPhone › SkillCapped Local" — the one folder the app may always read,
@@ -58,21 +67,29 @@ final class LibraryStore: ObservableObject {
   /// inside the app's own Documents needs no bookmark (the sandbox already grants
   /// it) while anything from outside is remembered as a security-scoped bookmark,
   /// which is also what keeps an iCloud Drive folder reachable across launches.
+  /// Whatever was downloaded into the previous folder is moved to this one.
   func choose(_ url: URL) {
     let target = library(in: url).standardizedFileURL
+    guard moving == nil else {
+      message = "Still moving the library to the last folder — try again in a moment."
+      return
+    }
+    let previous = downloadRoot.standardizedFileURL
+    let previousScoped = scoped
+
     if isInsideDocuments(target) {
       UserDefaults.standard.set(relativePath(of: target), forKey: Self.pathKey)
       UserDefaults.standard.removeObject(forKey: Self.bookmarkKey)
-      attach(target, persist: false)
-      return
+    } else {
+      guard let bookmark = try? target.bookmarkData(options: [], includingResourceValuesForKeys: nil, relativeTo: nil) else {
+        message = "That folder could not be remembered. Copy it into the app instead: Files › On My iPhone › SkillCapped Local."
+        return
+      }
+      UserDefaults.standard.set(bookmark, forKey: Self.bookmarkKey)
+      UserDefaults.standard.removeObject(forKey: Self.pathKey)
     }
-    guard let bookmark = try? target.bookmarkData(options: [], includingResourceValuesForKeys: nil, relativeTo: nil) else {
-      message = "That folder could not be remembered. Copy it into the app instead: Files › On My iPhone › SkillCapped Local."
-      return
-    }
-    UserDefaults.standard.set(bookmark, forKey: Self.bookmarkKey)
-    UserDefaults.standard.removeObject(forKey: Self.pathKey)
     attach(target, persist: false)
+    moveLibrary(from: previous, to: target, releasing: previousScoped)
   }
 
   /// A pick may be the library itself or the folder that holds it — iCloud
@@ -89,11 +106,50 @@ final class LibraryStore: ObservableObject {
     return scoped.standardizedFileURL.path == url.standardizedFileURL.path
   }
 
+  /// Carry the previous folder's content into the new one, off the main actor:
+  /// between two volumes the move is a copy, and a library is gigabytes.
+  private func moveLibrary(from source: URL, to destination: URL, releasing previous: URL?) {
+    let release = previous.flatMap { url in
+      url.standardizedFileURL.path == scoped?.standardizedFileURL.path ? nil : url
+    }
+    guard LibraryMigration.canMove(from: source, to: destination),
+          FileManager.default.fileExists(atPath: source.path)
+    else {
+      release?.stopAccessingSecurityScopedResource()
+      return
+    }
+
+    moving = LibraryMigration.Progress(waiting: true)
+    Task { [weak self] in
+      guard let self else { return }
+      await beforeMove?()
+      let report = await Task.detached(priority: .utility) {
+        LibraryMigration.run(from: source, to: destination) { progress in
+          Task { @MainActor [weak self] in
+            guard self?.moving != nil else { return }
+            self?.moving = progress
+          }
+        }
+      }.value
+      afterMove?(source, destination)
+      release?.stopAccessingSecurityScopedResource()
+      moving = nil
+      // `rescan` clears the message as it starts, so the report is said after it.
+      rescan()
+      message = report.note.isEmpty ? nil : report.note
+    }
+  }
+
   func forget() {
+    guard moving == nil else {
+      message = "Still moving the library to the last folder — try again in a moment."
+      return
+    }
     UserDefaults.standard.removeObject(forKey: Self.bookmarkKey)
     UserDefaults.standard.removeObject(forKey: Self.pathKey)
     scoped?.stopAccessingSecurityScopedResource()
     scoped = nil
+    rootURL = nil
     scan = nil
     rootName = nil
     isCloudRoot = false
@@ -112,7 +168,7 @@ final class LibraryStore: ObservableObject {
       }.value
       scan = result
       scanning = false
-      if result.isEmpty {
+      if result.isEmpty, moving == nil {
         message = "No lessons found. Point the app at the folder that holds Courses, Videos and Commentaries."
       }
     }
@@ -143,6 +199,7 @@ final class LibraryStore: ObservableObject {
   private func attach(_ url: URL, persist: Bool) {
     let started = url.startAccessingSecurityScopedResource()
     scoped = url
+    rootURL = url
     rootName = displayName(for: url)
     isCloudRoot = (try? url.resourceValues(forKeys: [.isUbiquitousItemKey]))?.isUbiquitousItem == true
     if persist, let bookmark = try? url.bookmarkData(options: [], includingResourceValuesForKeys: nil, relativeTo: nil) {

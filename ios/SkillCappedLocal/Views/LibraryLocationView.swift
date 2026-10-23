@@ -40,7 +40,7 @@ struct LibraryLocationView: View {
         } header: {
           Text("Any folder")
         } footer: {
-          Text("Wherever the downloader wrote its folder — iCloud Drive, On My iPad, another app's folder. The app reads it in place and remembers it, so the next launch opens straight into it.")
+          Text("Wherever the downloader wrote its folder — iCloud Drive, On My iPad, another app's folder. The app reads it in place and remembers it, and moves the lessons already on the phone into the folder you pick, so the app keeps one library instead of two.")
         }
 
         Section {
@@ -55,7 +55,7 @@ struct LibraryLocationView: View {
         } header: {
           Text("On My iPhone › SkillCapped Local")
         } footer: {
-          Text("Every folder in there holding Courses, Videos or Commentaries. The app reads it in place — nothing is copied.")
+          Text("Every folder in there holding Courses, Videos or Commentaries. The app reads it in place, and picking one moves anything it already downloaded into it.")
         }
 
         Section {
@@ -111,6 +111,7 @@ struct LibraryLocationView: View {
               store.forget()
               reload()
             }
+            .disabled(store.moving != nil)
           }
         }
       }

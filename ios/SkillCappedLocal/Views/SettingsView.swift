@@ -20,13 +20,22 @@ struct SettingsView: View {
               .foregroundStyle(Palette.inkFaint)
               .textSelection(.enabled)
           }
+          if let moving = store.moving {
+            LabeledContent("Moving", value: moving.label)
+          } else if let message = store.message {
+            Text(message)
+              .font(.caption)
+              .foregroundStyle(Palette.inkDim)
+              .fixedSize(horizontal: false, vertical: true)
+          }
           Button("Choose folder") { picking = true }
+            .disabled(store.moving != nil)
           Button("Forget folder", role: .destructive) { store.forget() }
-            .disabled(!store.hasFolder)
+            .disabled(!store.hasFolder || store.moving != nil)
         } header: {
           Text("Folder")
         } footer: {
-          Text("Any folder works — iCloud Drive, On My iPad, another app's folder — as does one inside Files › On My iPhone › SkillCapped Local.")
+          Text("Any folder works — iCloud Drive, On My iPad, another app's folder — as does one inside Files › On My iPhone › SkillCapped Local. Choosing a new folder moves the lessons already on the phone into it.")
         }
 
         Section {

@@ -192,6 +192,27 @@ on the phone itself, into the same folders the desktop build writes.
   at, so the browser finds them immediately; with no folder chosen they go to the
   app's own Documents folder, which is the same place the desktop library lands
   when you use **On My iPhone › SkillCapped Local**.
+- **Changing folders moves the library.** A pick is never only "look somewhere
+  else": whatever the app already has under the previous folder is carried into
+  the new one (`Model/LibraryMigration.swift`), so the app keeps one library
+  instead of a stale copy beside a fresh one. The downloader's own layout is
+  preserved — `Courses/`, `Videos/`, `Commentaries/`, the `.skillcapped/`
+  catalogue cache and a loose lesson at the top of the folder are the only things
+  carried, so a `Photos/` folder that happens to share the library is not the
+  app's to relocate. A file already in the destination is never overwritten: the
+  same relative path holding the same byte count counts as a second copy and the
+  old one is dropped, while a destination file with different content is left
+  alone and the source stays where it is, named in the report. A lesson still only
+  in iCloud is a hidden shadow file, not bytes, so it is not fetched just to be
+  moved. The move runs off the main actor (between two volumes it is a copy), the
+  queue is held until the lesson being written finishes, and a finished row's
+  remembered path follows its file; folders the move emptied are removed, so the
+  old library does not linger as a maze of empty boxes. `RootView` shows the
+  progress in a banner (and `Settings` in the folder section) and the report —
+  `Moved 42 files (1.2 GB) · 3 were already there · 1 left in the old folder.` —
+  once it lands. `LibraryMigrationTests` pins the carry, the merge, the refusal to
+  overwrite, the untouched non-library folders, the cloud shadow, the
+  never-into-itself rule and the progress readout.
 - **What it reads.** `<title> [<uuid>] <quality>.<ext>` under
   `Courses/<role>/<course>/`, `Videos/<role>/<category>/` and
   `Commentaries/<role>/`, exactly as `src/core/naming.ts` writes them, joined to

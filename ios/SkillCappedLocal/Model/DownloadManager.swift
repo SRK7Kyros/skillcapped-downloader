@@ -75,6 +75,9 @@ final class DownloadManager: ObservableObject {
     didSet { pump() }
   }
   private let scratch: URL
+  /// True while the library is moving: no lesson starts, so nothing is written
+  /// into a folder that is being carried elsewhere.
+  private var held = false
   private var runner: Task<Void, Never>?
   private var running: String?
   private var saveTask: Task<Void, Never>?
@@ -234,7 +237,38 @@ final class DownloadManager: ObservableObject {
 
   // MARK: - Running
 
+  /// Stop starting lessons and wait for the one being written, so the library can
+  /// be moved without a half-written file being carried off or left behind.
+  func hold() async {
+    held = true
+    while running != nil {
+      try? await Task.sleep(for: .milliseconds(200))
+    }
+  }
+
+  func release() {
+    held = false
+    pump()
+  }
+
+  /// Follow the files a moved library took with it: a finished lesson remembers
+  /// its absolute path, which the move just rewrote. A file the move left behind
+  /// keeps its old path, because that is still where it is.
+  func relocate(from source: URL, to destination: URL) {
+    var changed = false
+    for index in tasks.indices {
+      guard tasks[index].state == .ready, let path = tasks[index].path else { continue }
+      guard let moved = LibraryMigration.relocated(path, from: source, to: destination),
+            FileManager.default.fileExists(atPath: moved)
+      else { continue }
+      tasks[index].path = moved
+      changed = true
+    }
+    if changed { persist() }
+  }
+
   private func pump() {
+    guard !held else { return }
     guard runner == nil else { return }
     guard let next = tasks
       .filter({ $0.state == .queued })
