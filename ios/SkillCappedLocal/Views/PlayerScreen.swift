@@ -622,6 +622,12 @@ private struct Chrome: View {
 
   /// The track, with the elapsed time on its left and the time left on its
   /// right while the row is wide enough to hold all three.
+  ///
+  /// The track is given its width in points rather than "whatever is left": a
+  /// stretchy child in the row grew past the leftover and pushed the controls
+  /// after it off the edge, where iOS drops them out of the accessibility tree
+  /// entirely — the speed and the two queue steps simply were not there for a
+  /// test, or for VoiceOver, to find.
   private var timeline: some View {
     HStack(spacing: 8) {
       if showsTimes {
@@ -629,7 +635,7 @@ private struct Chrome: View {
       }
 
       PlayerScrubber(position: position, duration: duration, onScrub: scrub, onCommit: commit)
-        .frame(maxWidth: .infinity)
+        .frame(width: trackWidth)
 
       if showsTimes {
         time(
@@ -639,6 +645,16 @@ private struct Chrome: View {
         )
       }
     }
+  }
+
+  /// The room the row leaves for the track, worked out from the window: the six
+  /// controls and their gaps, the two readouts when they are shown, and the two
+  /// 10-point paddings are all fixed, so the track takes exactly the rest.
+  private var trackWidth: CGFloat {
+    let window = windowScene?.keyWindow?.bounds.width ?? 0
+    let controls: CGFloat = 230 + 12
+    let readouts: CGFloat = showsTimes ? 8 + 38 + 8 + 44 : 0
+    return max(window - 40 - controls - readouts, 60)
   }
 
   private func time(_ text: String, width: CGFloat, alignment: Alignment) -> some View {

@@ -47,15 +47,26 @@ final class PlayerChromeUITests: XCTestCase {
     let speed = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Playback speed")).firstMatch
     let previous = app.buttons["Previous lesson"]
     let next = app.buttons["Next lesson"]
-    let row = [back, forward, speed, previous, next]
+    let row = [
+      (name: "back", element: back),
+      (name: "forward", element: forward),
+      (name: "speed", element: speed),
+      (name: "previous", element: previous),
+      (name: "next", element: next),
+    ]
 
-    for element in row {
-      XCTAssertTrue(element.waitForExistence(timeout: 5), "\(element) should be in the transport", file: file, line: line)
+    for control in row {
+      XCTAssertTrue(
+        control.element.waitForExistence(timeout: 5),
+        "the \(control.name) control should be in the transport; window \(app.frame), buttons on screen: \(buttonsOnScreen(in: app))",
+        file: file,
+        line: line
+      )
     }
 
-    guard row.allSatisfy(\.exists) else { return }
+    guard row.allSatisfy({ $0.element.exists }) else { return }
 
-    let middle = row.map { $0.frame.midY }
+    let middle = row.map { $0.element.frame.midY }
     let spread = (middle.max() ?? 0) - (middle.min() ?? 0)
     XCTAssertLessThanOrEqual(spread, 10, "the transport should be one row, not a stack", file: file, line: line)
 
@@ -84,5 +95,13 @@ final class PlayerChromeUITests: XCTestCase {
     guard !app.buttons["Back 10 seconds"].exists else { return }
     app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.35)).tap()
     _ = app.buttons["Back 10 seconds"].waitForExistence(timeout: 5)
+  }
+
+  /// What the transport really looks like when an assertion fails: the labels
+  /// iOS put in the accessibility tree and where each one sits, so a missing
+  /// control is named as missing or as sitting off the edge of the window
+  /// instead of being guessed at.
+  private func buttonsOnScreen(in app: XCUIApplication) -> String {
+    app.buttons.allElementsBoundByIndex.map { "\($0.label)@\($0.frame.origin)" }.joined(separator: " | ")
   }
 }
