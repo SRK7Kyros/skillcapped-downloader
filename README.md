@@ -248,7 +248,16 @@ on the phone itself, into the same folders the desktop build writes.
   `Courses/<role>/<course>/`, `Videos/<role>/<category>/` and
   `Commentaries/<role>/`, exactly as `src/core/naming.ts` writes them, joined to
   `.skillcapped/catalog.json` for titles, durations and the order a course lists
-  its lessons in. Both containers are playable — an `.mp4` from the desktop and a
+  its lessons in. **A course is its folder**, and the catalogue only describes it:
+  a folder is named by a catalogue course only while exactly one course claims its
+  lessons. Keying identity on a catalogue id instead split one folder into two
+  cards with the same title whenever the desktop's file and the site disagreed
+  about which course owns a lesson id — the demo library hits this for real,
+  because two of its ids exist upstream under other courses — so `LibraryScanner`
+  keys every course on `Courses/<role>/<folder>` and `CatalogIndex.merged` sorts
+  its items, since that index's lesson → course map is last-write-wins and a
+  dictionary's order must never decide an owner. Both cases are pinned in
+  `LibraryScannerTests`. Both containers are playable — an `.mp4` from the desktop and a
   `.ts` from this app (and a `.ts` copied in by hand). Without that catalogue file
   the folders still group a course, and a video copied in by hand keeps its own
   name — its id comes from the uuid in the filename, so a lesson scanned before

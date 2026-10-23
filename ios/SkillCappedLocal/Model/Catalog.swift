@@ -190,6 +190,10 @@ struct CatalogIndex: Sendable {
     guard !secondary.isEmpty else { return primary }
     var items = secondary.byId
     for (id, item) in primary.byId { items[id] = item }
-    return CatalogIndex(items: Array(items.values), generatedAt: primary.generatedAt ?? secondary.generatedAt)
+    // Sorted because the index is built in item order and its lesson → course
+    // map is last-write-wins; a dictionary's order would decide which course
+    // owns a lesson the two catalogues disagree about.
+    let ordered = items.values.sorted { $0.id < $1.id }
+    return CatalogIndex(items: ordered, generatedAt: primary.generatedAt ?? secondary.generatedAt)
   }
 }

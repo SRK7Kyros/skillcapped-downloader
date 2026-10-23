@@ -143,8 +143,53 @@ final class LibraryScannerTests: XCTestCase {
     XCTAssertEqual(merged.item("aaaaaa1111")?.durationSec, 42)
   }
 
-  func testLooseVideosAndCommentariesStaySeparate() throws {
-    try touch("Videos/mid/Ahri vs Zed [c3d4e5f6a7] 1080p.mp4")
+  /// The desktop's own catalog.json and the site can name different courses for
+  /// one lesson id. Keying a course on a catalogue id split its folder into two
+  /// cards with the same title; the folder on disk is the course.
+  func testAFolderStaysOneCardWhenTwoCatalogueCoursesClaimItsLessons() throws {
+    try touch("Courses/adc/Why You Suck at ADC (ADC)/What's Next [j413lhtmz7] 1080p.mp4")
+    try touch("Courses/adc/Why You Suck at ADC (ADC)/Farming [a1b2c3d4e5] 1080p.mp4")
+
+    let catalog = """
+    {"generatedAt": 1700000000000, "items": [
+      {"id":"local1","kind":"course","title":"Why You Suck at ADC (ADC)","role":"adc","lessonIds":["a1b2c3d4e5"]},
+      {"id":"site99","kind":"course","title":"Why You Suck at ADC (ADC)","role":"adc","lessonIds":["j413lhtmz7"]},
+      {"id":"a1b2c3d4e5","kind":"video","title":"Farming","durationSec":905,"courseTitle":"Why You Suck at ADC (ADC)"},
+      {"id":"j413lhtmz7","kind":"video","title":"What's Next","durationSec":842,"courseTitle":"Why You Suck at ADC (ADC)"}
+    ]}
+    """
+
+    let scan = LibraryScanner.scan(root: root, catalog: try XCTUnwrap(CatalogIndex.decode(Data(catalog.utf8))))
+
+    XCTAssertEqual(scan.courses.count, 1, "one folder is one course")
+    let course = try XCTUnwrap(scan.courses.first)
+    XCTAssertEqual(course.title, "Why You Suck at ADC (ADC)")
+    XCTAssertEqual(course.lessons.count, 2)
+  }
+
+  /// The catalogue the app fetches arrives after the first scan, so a course
+  /// that changed its key on arrival would drop the card the user was looking at.
+  func testACoursesIdentitySurvivesTheCatalogueArriving() throws {
+    try touch("Courses/adc/Course One/First [aaaaaa1111] 1080p.mp4")
+
+    let catalog = """
+    {"generatedAt": 1700000000000, "items": [
+      {"id":"course1","kind":"course","title":"Course One","role":"adc","lessonIds":["aaaaaa1111"]},
+      {"id":"aaaaaa1111","kind":"video","title":"First Lesson","durationSec":600}
+    ]}
+    """
+
+    let bare = try XCTUnwrap(LibraryScanner.scan(root: root).courses.first)
+    let named = try XCTUnwrap(
+      LibraryScanner.scan(root: root, catalog: try XCTUnwrap(CatalogIndex.decode(Data(catalog.utf8)))).courses.first
+    )
+
+    XCTAssertEqual(bare.id, named.id)
+    XCTAssertEqual(bare.title, "Course One")
+    XCTAssertEqual(named.title, "Course One")
+  }
+
+  func testLooseVideosAndCommentariesStaySeparate() throws {    try touch("Videos/mid/Ahri vs Zed [c3d4e5f6a7] 1080p.mp4")
     try touch("Commentaries/jungle/Coaching Session [d4e5f6a7b8] 1080p.mp4")
 
     let scan = LibraryScanner.scan(root: root)

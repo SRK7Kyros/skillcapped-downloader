@@ -24,7 +24,10 @@ enum LibraryScanner {
     let resourceKeys = Set(keys)
 
     var courseLessons: [String: [Lesson]] = [:]
-    var courseMeta: [String: CatalogItem] = [:]
+    // Which catalogue courses claim a folder's lessons, and the first item seen
+    // for it. A folder is only described by a catalogue that agrees with itself.
+    var courseClaims: [String: Set<String>] = [:]
+    var courseCandidates: [String: CatalogItem] = [:]
     var courseFolderMeta: [String: (title: String, role: String, date: Date?)] = [:]
     var videos: [Lesson] = []
     var commentaries: [Lesson] = []
@@ -72,14 +75,23 @@ enum LibraryScanner {
 
       switch bucket {
       case let .course(folder, _):
-        let catalogCourseId = name.id.flatMap { catalog.courseByLesson[$0] }
-        let catalogCourse = catalogCourseId.flatMap { catalog.item($0) }
-        let title = catalogCourse?.title ?? item?.courseTitle ?? folder
-        let key = catalogCourseId.map { "catalog:\($0)" } ?? "folder:\(role)|\(title.lowercased())"
-        if let catalogCourse { courseMeta[key] = catalogCourse }
+        // A course on disk is its folder: this app and the desktop both write
+        // one folder per course. Keying on a catalogue id instead split one
+        // folder into two cards with the same title whenever the catalogue
+        // disagreed about which course owns a lesson — the desktop's own
+        // catalog.json and the site can name different courses for one id.
+        let key = "folder:\(role)|\(folder.lowercased())"
+        let catalogCourse = name.id
+          .flatMap { catalog.courseByLesson[$0] }
+          .flatMap { catalog.item($0) }
+        if let catalogCourse {
+          courseClaims[key, default: []].insert(catalogCourse.id)
+          if courseCandidates[key] == nil { courseCandidates[key] = catalogCourse }
+        }
         if courseFolderMeta[key] == nil {
+          let courseTitle = item?.courseTitle ?? ""
           courseFolderMeta[key] = (
-            title,
+            courseTitle.isEmpty ? folder : courseTitle,
             catalogCourse?.role ?? role,
             catalogCourse?.date ?? lesson.modified
           )
@@ -96,7 +108,9 @@ enum LibraryScanner {
 
     var courses: [Course] = []
     for (key, lessons) in courseLessons {
-      let meta = courseMeta[key]
+      // Only a single claimant describes the folder; two courses naming one
+      // folder's lessons means the catalogue cannot be trusted with its title.
+      let meta = courseClaims[key]?.count == 1 ? courseCandidates[key] : nil
       let fallback = courseFolderMeta[key]
       let ordered = lessons.sorted { first, second in
         let firstIndex = orderIndex(first, course: meta, catalog: catalog)
