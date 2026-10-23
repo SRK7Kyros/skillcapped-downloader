@@ -19,8 +19,8 @@ final class CourseLayoutTests: XCTestCase {
 
   func testAWindowThatDescribesNoScreenStacks() {
     XCTAssertFalse(CourseLayout.isSideBySide(.zero))
-    XCTAssertFalse(CourseLayout.isSideBySide(CGSize(width: .nan, height: 390)))
-    XCTAssertFalse(CourseLayout.isSideBySide(CGSize(width: 844, height: .infinity)))
+    XCTAssertFalse(CourseLayout.isSideBySide(CGSize(width: CGFloat.nan, height: 390)))
+    XCTAssertFalse(CourseLayout.isSideBySide(CGSize(width: 844, height: CGFloat.infinity)))
   }
 
   func testThePosterColumnIsWhatTheArtNeedsToFillTheHeight() {
@@ -40,7 +40,7 @@ final class CourseLayoutTests: XCTestCase {
     XCTAssertEqual(CourseLayout.posterColumn(size: .zero, ratio: PosterShape.portrait), 0)
     XCTAssertEqual(CourseLayout.posterColumn(size: CGSize(width: 844, height: 330), ratio: 0), 0)
     XCTAssertEqual(CourseLayout.posterColumn(size: CGSize(width: 844, height: 330), ratio: .nan), 0)
-    XCTAssertEqual(CourseLayout.posterColumn(size: CGSize(width: 844, height: .nan), ratio: PosterShape.portrait), 0)
+    XCTAssertEqual(CourseLayout.posterColumn(size: CGSize(width: 844, height: CGFloat.nan), ratio: PosterShape.portrait), 0)
   }
 
   func testTheStackedPosterIsAThirdOfTheWidth() {
