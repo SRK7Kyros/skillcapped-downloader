@@ -11,12 +11,18 @@ import CoreGraphics
 /// every card in a row exactly the same height, and it is also why a grid never
 /// reflows when the art finishes loading.
 enum PosterShape {
-  /// 576 / 912: the SkillCapped course card, portrait.
-  static let portrait: CGFloat = 576.0 / 912.0
+  /// 576 / 912: the SkillCapped course card as it is printed.
+  static let portraitArt: CGFloat = 576.0 / 912.0
+  /// 576 / 806: that card **with its dead foot cropped**. The site prints a
+  /// pure-black strip along the bottom of its course cards — measured 9.9–10.9%
+  /// of the height, the band its own site prints the title onto — and this app
+  /// draws its title *under* the art, so showing the strip whole leaves a band
+  /// of black that reads as empty space.
+  static let portrait: CGFloat = 576.0 / 806.0
   /// 16 / 9: a video still.
   static let landscape: CGFloat = 16.0 / 9.0
 
-  static func fallback(course: Bool) -> CGFloat { course ? portrait : landscape }
+  static func fallback(course: Bool) -> CGFloat { course ? portraitArt : landscape }
 
   /// Width over height, or nil when the size cannot describe a box.
   static func ratio(width: CGFloat, height: CGFloat) -> CGFloat? {

@@ -150,6 +150,18 @@ still adds it to the bulk selection.
   are exactly the same height and nothing reflows when the art finishes loading.
   Every card also reserves two title lines, whatever its title says, and the grid
   aligns to the top.
+- **The course window is 576×806, not 576×912.** The site prints a pure-black
+  strip along the bottom of its course cards — 9.9–10.9% of the height, measured
+  across the catalogue: 8 of 18 sampled posters have it, and every card in the
+  Discover grid at the time of the fix had it. That strip is the band
+  SkillCapped's own site prints its title onto; this app prints the title *under*
+  the art, so drawing the card at its printed shape left ~24pt of pure black
+  between the picture and the words that read as empty spacing. The window is the
+  printed card with that foot cut off (`576 / 806` in `posterRatio`,
+  `PosterShape.portrait` in the app, with `portraitArt` keeping 576×912 for the
+  stand-in that must match the art it will show). A card with no strip loses the
+  bottom 11% of dark art instead, which is the crop the design already makes
+  everywhere else.
 - **Four courses have no published lessons.** Their cards say so and cannot be
   selected.
 - Course titles contain role placeholders (`Wave Control {support}`); they are

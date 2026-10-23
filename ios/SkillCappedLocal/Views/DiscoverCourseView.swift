@@ -84,7 +84,7 @@ struct DiscoverCourseView: View {
       PosterArt(
         url: course.thumbURL,
         seed: course.title,
-        fallback: PosterShape.portrait,
+        fallback: PosterShape.portraitArt,
         targetWidth: 1_100
       )
 

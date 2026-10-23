@@ -116,9 +116,11 @@ test.describe("browse", () => {
     await expect(footer).not.toContainText(/tags/i)
     await expect(card.getByText(/^\d+ lessons$/)).toHaveCount(1)
 
-    // The banner is portrait art (576×912, title baked into the top). A 16:9 box with
-    // object-cover threw the title and two thirds of the picture away; the card must
-    // now take the poster's own shape.
+    // The banner is portrait art (576×912 with the title baked into the top) and the
+    // site prints a ~10% pure-black strip along its bottom — the band its own site
+    // prints the title onto. The card is drawn at that card's shape with the strip
+    // cut off, so the art ends where it looks like it ends instead of leaving a band
+    // of black between the picture and the words.
     const shapeOf = `(() => {
       const img = document.querySelectorAll("article img")[0]
       const rect = img.getBoundingClientRect()
@@ -134,9 +136,9 @@ test.describe("browse", () => {
       .poll(
         async () => {
           const shape = (await page.evaluate(shapeOf)) as { width: number; height: number; naturalWidth: number; naturalHeight: number }
-          return Number(Math.abs(shape.height / shape.width - shape.naturalHeight / shape.naturalWidth).toFixed(4))
+          return Number(Math.abs(shape.height / shape.width - 806 / 576).toFixed(4))
         },
-        { timeout: 5000, message: "the card must keep the poster's own shape" },
+        { timeout: 5000, message: "the card must be drawn at the course window, with the poster's dead foot cropped" },
       )
       .toBeLessThan(0.02)
   })
@@ -196,7 +198,7 @@ test.describe("browse", () => {
     })()`)) as { card: number; art: number; width: number; neighbours: number[] }
 
     expect(shape.neighbours.every((height) => height === shape.card), "the taller poster must not make its card taller").toBe(true)
-    expect(shape.art / shape.width, "the box keeps the window's 576:912 shape").toBeCloseTo(912 / 576, 1)
+    expect(shape.art / shape.width, "the box keeps the course window's 576:806 shape, not the art's").toBeCloseTo(806 / 576, 1)
   })
 
   test("the taller poster keeps the top of the art and crops the bottom", async ({ page }) => {

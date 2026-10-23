@@ -3,9 +3,11 @@ import XCTest
 @testable import SkillCappedLocal
 
 final class PosterShapeTests: XCTestCase {
-  func testThePosterKeepsItsOwnPortraitShape() {
-    let ratio = PosterShape.ratio(width: 576, height: 912)
-    XCTAssertEqual(ratio!, PosterShape.portrait, accuracy: 0.0001)
+  func testTheCourseWindowCropsThePostersDeadFootOffItsBottom() {
+    let art = PosterShape.ratio(width: 576, height: 912)!
+    XCTAssertEqual(art, PosterShape.portraitArt, accuracy: 0.0001)
+    XCTAssertGreaterThan(PosterShape.portrait, art)
+    XCTAssertEqual(PosterShape.height(width: 576, ratio: PosterShape.portrait), 806, accuracy: 0.5)
   }
 
   func testAStillIsLandscape() {
@@ -21,12 +23,12 @@ final class PosterShapeTests: XCTestCase {
   }
 
   func testTheStandInShapeFollowsTheKindOfArt() {
-    XCTAssertEqual(PosterShape.fallback(course: true), PosterShape.portrait)
+    XCTAssertEqual(PosterShape.fallback(course: true), PosterShape.portraitArt)
     XCTAssertEqual(PosterShape.fallback(course: false), PosterShape.landscape)
   }
 
   func testTheHeightABoxNeeds() {
-    XCTAssertEqual(PosterShape.height(width: 180, ratio: PosterShape.portrait), 285, accuracy: 0.01)
+    XCTAssertEqual(PosterShape.height(width: 180, ratio: PosterShape.portrait), 251.88, accuracy: 0.01)
     XCTAssertEqual(PosterShape.height(width: 320, ratio: PosterShape.landscape), 180, accuracy: 0.01)
   }
 
