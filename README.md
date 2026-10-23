@@ -191,14 +191,20 @@ on the phone itself, into the same folders the desktop build writes.
   is two columns only in landscape** (`Views/CourseView.swift`, geometry in
   `Support/CourseLayout.swift`): the poster fills the left edge whole — the column
   is exactly as wide as the art needs at its own shape to fill the height, capped
-  at 46% of the width — and it does not scroll; the title, count and *Play* pin
-  above the right-hand column and the lessons scroll under them. Portrait stacks
-  instead, because a poster column there eats the list: a poster a third of the
-  width (floored, capped, never cropped because it is drawn at its own shape)
-  beside the role, title, numbers and a full-width *Play*, then the lessons in a
-  scrolling box that takes the rest of the page. Below roughly 440pt of lesson
-  room the rows turn **compact**, a smaller still and a taller title, instead of
-  squeezing the words out.
+  at 46% of the width — and it does not scroll; the role badge, the numbers and
+  *Play* share one line above the right-hand column (the title sits under them, so
+  the header costs the list as little as possible) and the lessons scroll beneath.
+  Portrait stacks instead, because a poster column there eats the list: a poster a
+  third of the width (floored, capped, never cropped because it is drawn at its
+  own shape) beside the role, title, numbers and a full-width *Play*, then the
+  lessons in a scrolling box that takes the rest of the page. Below roughly 440pt
+  of lesson room the rows turn **compact**, a smaller still and a taller title,
+  instead of squeezing the words out. **The catalogue's course page is the same
+  page** (`Views/DiscoverCourseView.swift`): same two arrangements, same hero, same
+  pill — what changes is the data, so its pill reads *Play* when a lesson of that
+  course is already on this phone and *Download* when none is. The hero itself is
+  `Views/CourseHero.swift` (`CourseHero` + `CoursePill`), which is what keeps the
+  two screens from drifting apart.
 - **Downloading.** `SegmentDownloader` fetches the HLS parts four at a time under
   one shared polite budget and merges them into one MPEG-TS file, which is what
   lands in the library — nothing is re-encoded, because iOS cannot demux a
@@ -434,6 +440,13 @@ on the phone itself, into the same folders the desktop build writes.
   AltStore) applies its own signing profile. The app declares no entitlements. The
   marketing version comes from `ios/project.yml` `MARKETING_VERSION` — the
   workflow reads it whenever its dispatch input is blank, so a bump is one edit.
+  Two debug-only launch arguments keep the UI suite off the network:
+  `-demoLibrary` seeds a throwaway library in the app's own sandbox
+  (`Support/DemoLibrary.swift`) and `-demoCatalog` installs a small catalogue in
+  `CatalogueStore` (`Support/DemoCatalogue.swift`) whose lesson ids are the uuids
+  the demo library writes — so a run with both opens a *catalogue* course that
+  this phone already has, which is what `BrowseUITests` asserts in both
+  orientations.
 
 ## Development
 

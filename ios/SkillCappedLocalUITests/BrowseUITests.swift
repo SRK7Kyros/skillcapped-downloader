@@ -63,4 +63,33 @@ final class BrowseUITests: XCTestCase {
     shot.lifetime = .keepAlways
     add(shot)
   }
+
+  func testACatalogueCoursePageUsesTheCourseDesign() {
+    let app = XCUIApplication()
+    app.launchArguments = ["-demoLibrary", "-demoCatalog"]
+    app.launch()
+
+    let tab = app.tabBars.buttons["Discover"]
+    XCTAssertTrue(tab.waitForExistence(timeout: 40), "the Discover tab should be there")
+    tab.tap()
+
+    let course = app.staticTexts["Why You Suck at ADC (ADC)"]
+    XCTAssertTrue(course.waitForExistence(timeout: 30), "the catalogue card should render")
+    course.tap()
+
+    let play = app.buttons["Play Why You Suck at ADC (ADC) from the first lesson here"]
+    XCTAssertTrue(play.waitForExistence(timeout: 15), "a course already here should offer Play on its hero")
+    XCTAssertTrue(app.staticTexts["Not On This Phone"].waitForExistence(timeout: 10), "the catalogue's lessons should be listed")
+
+    XCUIDevice.shared.orientation = .landscapeLeft
+    defer { XCUIDevice.shared.orientation = .portrait }
+
+    XCTAssertTrue(play.waitForExistence(timeout: 10), "the pinned Play should survive landscape")
+    XCTAssertTrue(app.staticTexts["Not On This Phone"].exists, "the lessons should still be listed")
+
+    let shot = XCTAttachment(screenshot: app.screenshot())
+    shot.name = "catalogue-course-landscape"
+    shot.lifetime = .keepAlways
+    add(shot)
+  }
 }

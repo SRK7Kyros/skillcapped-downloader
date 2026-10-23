@@ -19,6 +19,10 @@ final class CatalogueStore: ObservableObject {
   func load(force: Bool = false) {
     guard task == nil else { return }
     if !force, catalog != nil { return }
+    if let demo = DemoCatalogue.catalog() {
+      apply(demo)
+      return
+    }
     loading = true
     error = nil
     task = Task { [weak self] in

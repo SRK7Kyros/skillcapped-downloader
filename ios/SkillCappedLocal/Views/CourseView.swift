@@ -48,10 +48,10 @@ struct CourseView: View {
         .frame(width: 1)
 
       VStack(spacing: 0) {
-        words(pinned: true)
+        hero(pinned: true)
           .padding(.horizontal, 16)
-          .padding(.top, 14)
-          .padding(.bottom, 12)
+          .padding(.top, 8)
+          .padding(.bottom, 10)
 
         Rectangle()
           .fill(Palette.line)
@@ -82,7 +82,7 @@ struct CourseView: View {
             .stroke(Palette.line, lineWidth: 1)
         }
 
-        words(pinned: false)
+        hero(pinned: false)
       }
       .padding(16)
 
@@ -97,46 +97,10 @@ struct CourseView: View {
   // MARK: - Words
 
   /// Role, title, the numbers and *Play* — the block that stays put while the
-  /// lessons move. Pinned (landscape) the button rides the top line, which keeps
-  /// the list tall; stacked (portrait) it closes the block under the words.
-  private func words(pinned: Bool) -> some View {
-    VStack(alignment: .leading, spacing: 8) {
-      if pinned {
-        HStack(spacing: 8) {
-          roleBadge
-          Spacer(minLength: 8)
-          playButton(compact: true)
-        }
-      } else {
-        roleBadge
-      }
-
-      Text(course.title)
-        .font(.headline)
-        .foregroundStyle(Palette.ink)
-        .fixedSize(horizontal: false, vertical: true)
-
-      Text(meta)
-        .font(.caption2)
-        .foregroundStyle(Palette.inkFaint)
-        .fixedSize(horizontal: false, vertical: true)
-
-      if !pinned {
-        playButton(compact: false)
-          .padding(.top, 2)
-      }
-    }
-    .frame(maxWidth: .infinity, alignment: .leading)
-  }
-
-  @ViewBuilder private var roleBadge: some View {
-    if !course.role.isEmpty {
-      Text(Format.roleLabel(course.role))
-        .font(.caption2.weight(.heavy))
-        .foregroundStyle(Palette.bg)
-        .padding(.horizontal, 8)
-        .padding(.vertical, 3)
-        .background(Palette.brand, in: Capsule())
+  /// lessons move (see `CourseHero` for the two arrangements).
+  private func hero(pinned: Bool) -> some View {
+    CourseHero(role: course.role, title: course.title, meta: meta, pinned: pinned) {
+      playButton(compact: pinned)
     }
   }
 
@@ -145,13 +109,7 @@ struct CourseView: View {
       Button {
         player.play(first, in: course.lessons)
       } label: {
-        Label("Play", systemImage: "play.fill")
-          .font(.caption.weight(.bold))
-          .padding(.horizontal, compact ? 14 : 0)
-          .frame(maxWidth: compact ? nil : CGFloat.infinity)
-          .padding(.vertical, compact ? 7 : 8)
-          .background(Palette.brand, in: Capsule())
-          .foregroundStyle(Palette.bg)
+        CoursePill(title: "Play", systemImage: "play.fill", compact: compact)
       }
       .buttonStyle(.plain)
       .accessibilityLabel("Play \(course.title) from the first lesson")
