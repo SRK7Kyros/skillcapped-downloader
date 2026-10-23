@@ -213,6 +213,10 @@ final class LibraryStore: ObservableObject {
         let catalog = CatalogIndex.load(root: root) ?? .empty
         return LibraryScanner.scan(root: root, catalog: catalog)
       }.value
+      // A scan of a folder the app has since left must not answer for the new
+      // one: picking a folder while the app's own is still being read used to
+      // leave the empty own folder's result showing.
+      guard isSamePath(root, libraryURL) else { return }
       scan = result
       scanning = false
       if result.isEmpty, moving == nil {
