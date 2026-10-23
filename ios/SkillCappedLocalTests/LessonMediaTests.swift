@@ -45,6 +45,25 @@ final class LessonMediaTests: XCTestCase {
     XCTAssertFalse(LessonServer.offers(URL(fileURLWithPath: "/a/B.mp4")))
   }
 
+  /// A lesson the catalogue knows is never measured, and one it does not is read
+  /// off the stream instead of being declared an hour long.
+  func testTheDurationComesFromTheStreamOnlyWhenTheCatalogueIsSilent() throws {
+    let file = try fixture()
+    XCTAssertEqual(LessonServer.duration(declared: 754, file: file), 754)
+    let measured = LessonServer.duration(declared: 0, file: file)
+    XCTAssertTrue((2...4).contains(measured), "the fixture is about three seconds long, not \(measured)")
+  }
+
+  func testAStreamThatStatesNothingKeepsThePlaceholder() throws {
+    let file = FileManager.default.temporaryDirectory
+      .appendingPathComponent("silent-\(UUID().uuidString).ts")
+    defer { try? FileManager.default.removeItem(at: file) }
+    XCTAssertTrue(FileManager.default.createFile(atPath: file.path, contents: Data(repeating: 0, count: 2048)))
+
+    XCTAssertEqual(LessonServer.duration(declared: 0, file: file), 0)
+    XCTAssertTrue(LessonServer.playlist(token: "abc", port: 1, seconds: 0).contains("#EXTINF:\(LessonServer.unknownSeconds).000,"))
+  }
+
   /// The server has to answer a playlist and a byte range before the player is
   /// involved at all, so its own contract is checked without AVFoundation.
   func testTheServerServesAPlaylistAndAByteRange() async throws {

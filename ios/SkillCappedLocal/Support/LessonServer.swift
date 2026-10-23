@@ -80,8 +80,9 @@ final class LessonServer: @unchecked Sendable {
   /// The playlist URL for a lesson, once the server is listening.
   func url(for file: URL, seconds: Int) async throws -> URL {
     let port = try await start()
+    let length = await Self.length(declared: seconds, file: file)
     lock.lock()
-    lessons[Self.token(for: file)] = Lesson(file: file, seconds: seconds)
+    lessons[Self.token(for: file)] = Lesson(file: file, seconds: length)
     lock.unlock()
     guard let url = URL(string: "http://127.0.0.1:\(port)/lesson/\(Self.token(for: file))/\(Self.playlistName)") else {
       throw LessonServerFailure.noAddress
@@ -91,6 +92,25 @@ final class LessonServer: @unchecked Sendable {
 
   static func offers(_ url: URL) -> Bool {
     ["ts", "mts", "m2ts"].contains(url.pathExtension.lowercased())
+  }
+
+  // MARK: - The duration
+
+  /// A declared duration wins. A lesson the catalogue does not know is measured
+  /// off the stream itself, because the alternative is a made-up hour-long
+  /// timeline; and a file that says nothing at all keeps the placeholder, so it
+  /// still plays, only its window is a guess.
+  static func duration(declared: Int, file: URL) -> Int {
+    guard declared <= 0 else { return declared }
+    return TransportStream.seconds(of: file) ?? 0
+  }
+
+  /// Measured off the caller's thread: this touches both ends of a file that can
+  /// be a gigabyte.
+  private static func length(declared: Int, file: URL) async -> Int {
+    await Task.detached(priority: .utility) {
+      duration(declared: declared, file: file)
+    }.value
   }
 
   // MARK: - The playlist
