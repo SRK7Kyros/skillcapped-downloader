@@ -199,8 +199,7 @@ struct LibraryLocationView: View {
         switch result {
         case let .success(url):
           pickerNote = nil
-          store.choose(url)
-          dismiss()
+          if store.choose(url) { dismiss() }
         case let .failure(error):
           if case .cancelled = error { return }
           pickerNote = error.errorDescription

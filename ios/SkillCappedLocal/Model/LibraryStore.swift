@@ -119,10 +119,11 @@ final class LibraryStore: ObservableObject {
   /// The reading happens off the main actor (`LibraryPick.prepare`): a folder in
   /// another app's container answers through its file provider, and doing that
   /// here used to freeze the app the moment the picker's **Open** was tapped.
-  func choose(_ url: URL) {
+  @discardableResult
+  func choose(_ url: URL) -> Bool {
     guard moving == nil, preparing == nil else {
       message = "Still opening the last folder — try again in a moment."
-      return
+      return false
     }
     let previous = downloadRoot.standardizedFileURL
     let previousScoped = scoped
@@ -131,7 +132,7 @@ final class LibraryStore: ObservableObject {
     // happens to sit inside it — and it needs no reading, so it stays immediate.
     if isSamePath(url, documents) {
       apply(LibraryPick.prepare(url, documents: documents), previous: previous, previousScoped: previousScoped)
-      return
+      return true
     }
 
     let documents = self.documents
@@ -156,6 +157,7 @@ final class LibraryStore: ObservableObject {
       lastPick = pick
       apply(pick, previous: previous, previousScoped: previousScoped)
     }
+    return true
   }
 
   /// Give up on a folder that is taking too long to read. Nothing moves: the
