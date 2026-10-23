@@ -56,6 +56,93 @@ final class LibraryScannerTests: XCTestCase {
     XCTAssertEqual(course.lessons.first?.seconds, 900)
   }
 
+  /// A lesson downloaded on the phone has no frame to show — iOS cannot decode a
+  /// transport stream — so the poster the catalogue prints is what the card draws.
+  func testCataloguePostersFollowTheirLessonAndCourse() throws {
+    try touch("Courses/adc/Course One/First [aaaaaa1111] 1080p.ts")
+
+    let json = """
+    {"generatedAt": 1700000000000, "items": [
+      {"id":"course1","kind":"course","title":"Course One","role":"adc",
+       "thumb":"https://cdn.example/course.jpg","lessonIds":["aaaaaa1111"]},
+      {"id":"aaaaaa1111","kind":"video","title":"First Lesson","role":"adc",
+       "thumb":"https://cdn.example/lesson.jpg","durationSec":600,"courseTitle":"Course One"}
+    ]}
+    """
+    let catalog = try XCTUnwrap(CatalogIndex.decode(Data(json.utf8)))
+    let scan = LibraryScanner.scan(root: root, catalog: catalog)
+
+    let course = try XCTUnwrap(scan.courses.first)
+    let lesson = try XCTUnwrap(course.lessons.first)
+    XCTAssertEqual(lesson.posterURL?.absoluteString, "https://cdn.example/lesson.jpg")
+    XCTAssertEqual(course.posterURL?.absoluteString, "https://cdn.example/course.jpg")
+    XCTAssertEqual(course.artURL, course.posterURL, "the printed poster is preferred to a frame")
+  }
+
+  func testAThumbThatIsNotAnAddressIsNotDrawn() throws {
+    try touch("Videos/mid/Ahri vs Zed [c3d4e5f6a7] 1080p.mp4")
+
+    let json = """
+    {"generatedAt": 1700000000000, "items": [
+      {"id":"c3d4e5f6a7","kind":"video","title":"Ahri vs Zed","thumb":"thumb.jpg"}
+    ]}
+    """
+    let catalog = try XCTUnwrap(CatalogIndex.decode(Data(json.utf8)))
+    let scan = LibraryScanner.scan(root: root, catalog: catalog)
+
+    let video = try XCTUnwrap(scan.videos.first)
+    XCTAssertNil(video.posterURL, "a bare path would be read as a file the app never wrote")
+  }
+
+  /// A folder the phone filled itself carries no `.skillcapped/catalog.json` —
+  /// that is a desktop artefact — so the fetched catalogue is what gives such a
+  /// library its titles, order and posters.
+  func testAFetchedCatalogueNamesAPhoneOnlyLibrary() throws {
+    try touch("Courses/adc/Course One/First [aaaaaa1111] 1080p.ts")
+    try touch("Courses/adc/Course One/Second [bbbbbb2222] 1080p.ts")
+
+    let fetched = """
+    {"generatedAt": 1700000000000, "items": [
+      {"id":"course1","kind":"course","title":"Course One","role":"adc",
+       "thumb":"https://cdn.example/course.jpg","lessonIds":["bbbbbb2222","aaaaaa1111"]},
+      {"id":"aaaaaa1111","kind":"video","title":"First Lesson","durationSec":600},
+      {"id":"bbbbbb2222","kind":"video","title":"Second Lesson","durationSec":900}
+    ]}
+    """
+    let catalog = CatalogIndex.merged(
+      primary: CatalogIndex.load(root: root) ?? .empty,
+      secondary: try XCTUnwrap(CatalogIndex.decode(Data(fetched.utf8)))
+    )
+    let scan = LibraryScanner.scan(root: root, catalog: catalog)
+
+    let course = try XCTUnwrap(scan.courses.first)
+    XCTAssertEqual(course.lessons.map(\.title), ["Second Lesson", "First Lesson"])
+    XCTAssertEqual(course.lessons.first?.seconds, 900)
+    XCTAssertNotNil(course.posterURL)
+  }
+
+  func testTheLibrarysOwnCatalogueWinsWhereTheTwoDisagree() throws {
+    try touch("Courses/adc/Course One/First [aaaaaa1111] 1080p.ts")
+
+    let local = """
+    {"generatedAt": 1700000000000, "items": [
+      {"id":"aaaaaa1111","kind":"video","title":"Named On Disk","durationSec":42}
+    ]}
+    """
+    let fetched = """
+    {"generatedAt": 1700000000000, "items": [
+      {"id":"aaaaaa1111","kind":"video","title":"Named Upstream","durationSec":600}
+    ]}
+    """
+    let merged = CatalogIndex.merged(
+      primary: try XCTUnwrap(CatalogIndex.decode(Data(local.utf8))),
+      secondary: try XCTUnwrap(CatalogIndex.decode(Data(fetched.utf8)))
+    )
+
+    XCTAssertEqual(merged.item("aaaaaa1111")?.title, "Named On Disk")
+    XCTAssertEqual(merged.item("aaaaaa1111")?.durationSec, 42)
+  }
+
   func testLooseVideosAndCommentariesStaySeparate() throws {
     try touch("Videos/mid/Ahri vs Zed [c3d4e5f6a7] 1080p.mp4")
     try touch("Commentaries/jungle/Coaching Session [d4e5f6a7b8] 1080p.mp4")

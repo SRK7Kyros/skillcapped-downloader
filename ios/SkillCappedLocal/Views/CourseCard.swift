@@ -6,10 +6,10 @@ struct CourseCard: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
       PosterArt(
-        url: course.bannerURL,
+        url: course.artURL,
         seed: course.title,
-        fallback: PosterShape.landscape,
-        window: PosterShape.landscape,
+        fallback: PosterShape.portraitArt,
+        window: PosterShape.portrait,
         targetWidth: 560,
         glyphSize: 22
       )
@@ -58,12 +58,24 @@ struct LessonRow: View {
   let lesson: Lesson
   var index: Int?
   var progress: Double?
+  /// A narrow column — the right-hand half of a course page on a phone — where a
+  /// full-width still would leave no room for the words.
+  var compact = false
+
+  private var stillWidth: CGFloat { compact ? 82 : 104 }
 
   var body: some View {
-    HStack(spacing: 12) {
+    HStack(spacing: compact ? 10 : 12) {
       ZStack(alignment: .bottomTrailing) {
-        PosterArt(url: lesson.url, seed: lesson.title, width: 104, targetWidth: 320, glyphSize: 18)
-          .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        PosterArt(
+          url: lesson.url,
+          seed: lesson.title,
+          remote: lesson.posterURL,
+          width: stillWidth,
+          targetWidth: compact ? 260 : 320,
+          glyphSize: compact ? 15 : 18
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
 
         if let quality = lesson.quality {
           Text(quality)
@@ -83,9 +95,9 @@ struct LessonRow: View {
             .foregroundStyle(Palette.brand)
         }
         Text(lesson.title)
-          .font(.subheadline)
+          .font(compact ? .footnote : .subheadline)
           .foregroundStyle(Palette.ink)
-          .lineLimit(2)
+          .lineLimit(compact ? 3 : 2)
           .multilineTextAlignment(.leading)
         HStack(spacing: 6) {
           if lesson.seconds > 0 {
@@ -104,17 +116,19 @@ struct LessonRow: View {
         if let progress, progress > 0.01 {
           ProgressView(value: min(progress, 1))
             .tint(Palette.brand)
-            .frame(maxWidth: 140)
+            .frame(maxWidth: compact ? 120 : 140)
         }
       }
 
       Spacer(minLength: 0)
 
-      Image(systemName: "play.circle")
-        .font(.title3)
-        .foregroundStyle(Palette.inkDim)
+      if !compact {
+        Image(systemName: "play.circle")
+          .font(.title3)
+          .foregroundStyle(Palette.inkDim)
+      }
     }
-    .padding(.vertical, 8)
+    .padding(.vertical, compact ? 7 : 8)
     .contentShape(Rectangle())
   }
 }

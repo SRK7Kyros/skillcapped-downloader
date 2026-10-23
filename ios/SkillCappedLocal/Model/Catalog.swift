@@ -4,7 +4,7 @@ import Foundation
 /// `.skillcapped/catalog.json`, and what the upstream course dump is flattened
 /// into. Tolerant on purpose: a missing or renamed field degrades one row
 /// instead of blanking the whole catalogue.
-struct CatalogItem: Codable, Hashable, Identifiable {
+struct CatalogItem: Codable, Hashable, Identifiable, Sendable {
   let id: String
   let kind: String
   let title: String
@@ -25,11 +25,7 @@ struct CatalogItem: Codable, Hashable, Identifiable {
   var isCommentary: Bool { kind == "commentary" }
 
   /// Only an http(s) address is worth handing to an image view.
-  var thumbURL: URL? {
-    guard let url = URL(string: thumb), let scheme = url.scheme?.lowercased(),
-          scheme == "https" || scheme == "http" else { return nil }
-    return url
-  }
+  var thumbURL: URL? { WebLink.url(thumb) }
 
   init(
     id: String,
@@ -117,7 +113,7 @@ struct CatalogItem: Codable, Hashable, Identifiable {
 
 /// Lookup side of the catalogue: item by id, which course a lesson belongs to,
 /// and the order a course lists its lessons in.
-struct CatalogIndex {
+struct CatalogIndex: Sendable {
   let byId: [String: CatalogItem]
   let courseByLesson: [String: String]
   let lessonOrder: [String: [String: Int]]

@@ -20,6 +20,11 @@ final class LibraryStore: ObservableObject {
   /// What the last pick found and how long it took.
   @Published private(set) var lastPick: LibraryPick?
   private var preparingToken: UUID?
+  /// The catalogue the app has fetched. A folder this phone filled itself has no
+  /// `.skillcapped/catalog.json` — only one that came from the desktop carries it
+  /// — so without this the lessons would have no titles, no order, no durations
+  /// and no posters.
+  private var catalogue = CatalogIndex.empty
 
   private static let bookmarkKey = "library.bookmark"
   private static let pathKey = "library.relativePath"
@@ -107,6 +112,16 @@ final class LibraryStore: ObservableObject {
 
   func refreshCandidates() {
     candidates = LibraryLocator.libraries(in: documents)
+  }
+
+  /// Point the store at the catalogue the app has fetched, and read the folder
+  /// again so its lessons gain their titles, order, durations and posters.
+  func adopt(catalog: CatalogIndex) {
+    guard !catalog.isEmpty else { return }
+    guard catalog.generatedAt != catalogue.generatedAt
+      || catalog.byId.count != catalogue.byId.count else { return }
+    catalogue = catalog
+    rescan()
   }
 
   /// Point the library at `url` — a folder the system picker handed back, one of
@@ -259,11 +274,13 @@ final class LibraryStore: ObservableObject {
 
   func rescan() {
     let root = libraryURL
+    let external = catalogue
     scanning = true
     message = nil
     Task {
       let result = await Task.detached(priority: .userInitiated) {
-        let catalog = CatalogIndex.load(root: root) ?? .empty
+        let local = CatalogIndex.load(root: root) ?? .empty
+        let catalog = CatalogIndex.merged(primary: local, secondary: external)
         return LibraryScanner.scan(root: root, catalog: catalog)
       }.value
       // A scan of a folder the app has since left must not answer for the new

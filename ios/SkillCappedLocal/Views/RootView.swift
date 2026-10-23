@@ -5,6 +5,7 @@ struct RootView: View {
   @EnvironmentObject private var player: PlayerCoordinator
   @EnvironmentObject private var downloads: DownloadManager
   @EnvironmentObject private var prefs: PreferencesStore
+  @EnvironmentObject private var catalogue: CatalogueStore
 
   @State private var tab: Tab = .library
   @State private var picking = false
@@ -44,7 +45,14 @@ struct RootView: View {
     .fullScreenCover(item: $player.lesson) { lesson in
       PlayerScreen(lesson: lesson)
     }
-    .onAppear(perform: sync)
+    .onAppear {
+      sync()
+      catalogue.load()
+      store.adopt(catalog: catalogue.index)
+    }
+    .onChange(of: catalogue.catalog?.generatedAt) { _, _ in
+      store.adopt(catalog: catalogue.index)
+    }
     .onChange(of: store.rootURL) { _, _ in sync() }
     .onChange(of: prefs.qualityPriority) { _, order in downloads.qualityPriority = order }
   }

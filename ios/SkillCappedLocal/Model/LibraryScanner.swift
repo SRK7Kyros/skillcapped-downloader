@@ -66,7 +66,8 @@ enum LibraryScanner {
         bytes: placeholder == nil ? Int64(values?.fileSize ?? 0) : 0,
         modified: values?.contentModificationDate,
         itemId: item?.id ?? name.id,
-        needsDownload: placeholder != nil || needsDownload(values)
+        needsDownload: placeholder != nil || needsDownload(values),
+        thumb: item?.thumb ?? ""
       )
 
       switch bucket {
@@ -109,7 +110,8 @@ enum LibraryScanner {
         role: meta?.role ?? fallback?.role ?? "",
         category: meta?.category ?? "",
         date: meta?.date ?? fallback?.date,
-        lessons: ordered
+        lessons: ordered,
+        thumb: meta?.thumb ?? ""
       ))
     }
     courses.sort { first, second in

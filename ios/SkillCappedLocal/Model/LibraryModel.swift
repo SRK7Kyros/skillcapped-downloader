@@ -11,6 +11,12 @@ struct Lesson: Identifiable, Hashable {
   let modified: Date?
   let itemId: String?
   let needsDownload: Bool
+  /// The poster the site prints for this lesson. It matters most for a transport
+  /// stream: iOS cannot decode a frame out of one, so without the hosted poster a
+  /// lesson downloaded on the phone would only ever have a gradient.
+  var thumb: String = ""
+
+  var posterURL: URL? { WebLink.url(thumb) }
 }
 
 struct Course: Identifiable, Hashable {
@@ -20,10 +26,18 @@ struct Course: Identifiable, Hashable {
   let category: String
   let date: Date?
   let lessons: [Lesson]
+  /// The course card the site prints — portrait, with its title baked into the
+  /// top. A local frame is only the stand-in when the catalogue has no poster.
+  var thumb: String = ""
 
   var bytes: Int64 { lessons.reduce(0) { $0 + $1.bytes } }
   var seconds: Int { lessons.reduce(0) { $0 + $1.seconds } }
   var bannerURL: URL? { lessons.first?.url }
+  var posterURL: URL? { WebLink.url(thumb) }
+
+  /// What the card draws: the printed poster when the catalogue knows one, and a
+  /// frame out of the first lesson otherwise.
+  var artURL: URL? { posterURL ?? bannerURL }
 }
 
 struct LibraryScan: Equatable {

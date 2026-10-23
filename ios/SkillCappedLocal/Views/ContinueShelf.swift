@@ -36,6 +36,7 @@ struct ContinueShelf: View {
       PosterArt(
         url: lesson.url,
         seed: lesson.title,
+        remote: lesson.posterURL,
         window: PosterShape.landscape,
         width: 168,
         targetWidth: 360,

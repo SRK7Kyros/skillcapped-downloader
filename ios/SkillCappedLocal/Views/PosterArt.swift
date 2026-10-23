@@ -17,6 +17,9 @@ import UIKit
 struct PosterArt: View {
   let url: URL?
   var seed: String
+  /// A hosted poster to fall back to when the local file cannot yield a frame —
+  /// which is every transport stream, since iOS will not decode one.
+  var remote: URL?
   /// Shape before the art loads, and the shape kept when no window is given.
   var fallback: CGFloat = PosterShape.landscape
   /// The one shape every box in this grid is drawn at. A window is what makes a
@@ -47,7 +50,7 @@ struct PosterArt: View {
         )
       )
       .clipped()
-      .task(id: url) { await load() }
+      .task(id: "\(url?.absoluteString ?? "")|\(remote?.absoluteString ?? "")") { await load() }
   }
 
   /// A box of the window's shape — the width the caller pins, or the width the
@@ -90,16 +93,14 @@ struct PosterArt: View {
   }
 
   private func load() async {
-    guard let url else {
-      image = nil
-      shape = nil
-      return
+    var loaded: UIImage?
+    if let url {
+      loaded = url.isFileURL
+        ? await PosterStore.shared.poster(for: url, width: targetWidth)
+        : await RemoteArtStore.shared.image(for: url)
     }
-    let loaded: UIImage?
-    if url.isFileURL {
-      loaded = await PosterStore.shared.poster(for: url, width: targetWidth)
-    } else {
-      loaded = await RemoteArtStore.shared.image(for: url)
+    if loaded == nil, let remote {
+      loaded = await RemoteArtStore.shared.image(for: remote)
     }
     guard !Task.isCancelled else { return }
     image = loaded
