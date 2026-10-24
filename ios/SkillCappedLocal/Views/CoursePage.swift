@@ -97,19 +97,20 @@ extension CourseLesson {
 
 extension Array where Element == CourseLesson {
   /// The one numbers line both surfaces print, in one order: how many lessons,
-  /// how many of them are here (only when that is not all of them), what they
-  /// weigh on this phone, and how long they run.
+  /// what they weigh on this phone, and how long they run.
   ///
   /// Every part is optional on purpose — a course whose lessons are all still in
   /// the catalogue has a count and a length and nothing else — so the same
   /// formula prints on the library's page and on Discover's, and a value appears
   /// in the same place on both as soon as it exists.
+  ///
+  /// Deliberately no "N on disk": the library's page can never carry that field,
+  /// so printing it here is exactly what made the two pages read differently.
+  /// `BrowseUITests.testBothCoursePagesDrawTheSameLessonRow` fails if it returns.
   var courseMeta: String {
     guard !isEmpty else { return "No published lessons" }
 
     var parts = [Format.count(count, "lesson", "lessons")]
-    let here = reduce(0) { $0 + ($1.local == nil ? 0 : 1) }
-    if here > 0, here < count { parts.append("\(here) on disk") }
     let bytes = reduce(Int64(0)) { $0 + ($1.local?.bytes ?? 0) }
     if bytes > 0 { parts.append(Format.bytes(bytes)) }
     let seconds = reduce(0) { $0 + Swift.max($1.seconds, 0) }

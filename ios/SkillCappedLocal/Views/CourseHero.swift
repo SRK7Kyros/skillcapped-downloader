@@ -55,6 +55,7 @@ struct CourseHero<Action: View>: View {
               .foregroundStyle(Palette.inkFaint)
               .lineLimit(1)
               .truncationMode(.tail)
+              .accessibilityIdentifier("course.meta")
           }
           Spacer(minLength: 10)
           action
@@ -69,6 +70,7 @@ struct CourseHero<Action: View>: View {
             .font(.caption2)
             .foregroundStyle(Palette.inkFaint)
             .fixedSize(horizontal: false, vertical: true)
+            .accessibilityIdentifier("course.meta")
         }
         action
           .padding(.top, 2)

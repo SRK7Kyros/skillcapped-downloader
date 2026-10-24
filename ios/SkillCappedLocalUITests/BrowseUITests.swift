@@ -110,6 +110,8 @@ final class BrowseUITests: XCTestCase {
     XCTAssertTrue(libraryRow.waitForExistence(timeout: 10), "the library page should list a lesson row")
     let library = libraryRow.frame
     XCTAssertGreaterThan(library.width, 200, "a lesson row should span the page")
+    let libraryMeta = numbersLine(in: app, "the library page")
+    let libraryNumbers = libraryMeta.label
 
     app.terminate()
 
@@ -128,6 +130,13 @@ final class BrowseUITests: XCTestCase {
     XCTAssertTrue(catalogueRow.waitForExistence(timeout: 10), "the catalogue page should list a lesson row")
     let catalogue = catalogueRow.frame
     XCTAssertGreaterThan(catalogue.width, 200, "a lesson row should span the page")
+    let catalogueMeta = numbersLine(in: app, "the catalogue page")
+
+    XCTAssertEqual(
+      lessonCount(in: libraryNumbers),
+      lessonCount(in: catalogueMeta.label),
+      "the same course should count the same lessons on both pages — \(libraryNumbers) / \(catalogueMeta.label)"
+    )
 
     XCTAssertEqual(
       library.minX,
@@ -141,5 +150,29 @@ final class BrowseUITests: XCTestCase {
       accuracy: 1,
       "and be exactly as wide"
     )
+  }
+
+  /// The numbers line, which is one field set for both surfaces. The catalogue's
+  /// page used to swap it for an on-disk count and the course's date, which is
+  /// the "the data shown also differs" half of the report this pins.
+  @discardableResult
+  private func numbersLine(in app: XCUIApplication, _ where_: String) -> XCUIElement {
+    let meta = app.staticTexts["course.meta"]
+    XCTAssertTrue(meta.waitForExistence(timeout: 10), "\(where_) should show a numbers line")
+    XCTAssertFalse(
+      meta.label.contains("on disk"),
+      "\(where_)'s numbers line carries an on-disk count — \(meta.label)"
+    )
+    XCTAssertFalse(
+      meta.label.contains("2026"),
+      "\(where_)'s numbers line carries the course date — \(meta.label)"
+    )
+    return meta
+  }
+
+  /// The leading number of a numbers line — the course's lesson count, which must
+  /// read the same whichever surface opened the course.
+  private func lessonCount(in line: String) -> String? {
+    line.components(separatedBy: " ").first
   }
 }
