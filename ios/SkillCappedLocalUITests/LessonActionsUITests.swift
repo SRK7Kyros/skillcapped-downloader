@@ -60,7 +60,10 @@ final class LessonActionsUITests: XCTestCase {
     shot.lifetime = .keepAlways
     add(shot)
 
-    // Dismiss the menu by tapping the page's own title: it is chrome, not an action.
-    app.navigationBars.staticTexts["Why You Suck at ADC (ADC)"].tap()
+    // Dismiss the menu on the page's own chrome. A coordinate tap never asks the
+    // element to scroll itself into view, which AX refuses for a pinned header.
+    app.navigationBars.firstMatch
+      .coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+      .tap()
   }
 }

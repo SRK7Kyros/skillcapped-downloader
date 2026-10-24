@@ -83,7 +83,8 @@ enum TSRemux {
         sourceFormatHint: audioFormat
       )
       input.expectsMediaDataInRealTime = false
-      input.mediaTimeScale = CMTimeScale(max(probe.audio?.sampleRate ?? 44100, 1))
+      // Only a video track takes a media time scale: asking an audio one for a
+      // non-default value raises, which is how this was learned.
       guard writer.canAdd(input) else { throw Failure.unusableAudio }
       writer.add(input)
       audio = input
