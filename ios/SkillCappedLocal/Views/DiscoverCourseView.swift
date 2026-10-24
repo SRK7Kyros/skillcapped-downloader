@@ -22,7 +22,7 @@ struct DiscoverCourseView: View {
 
   var body: some View {
     CoursePage(
-      model: .catalogue(
+      page: .catalogue(
         course,
         lessons: lessons,
         scan: store.scan,

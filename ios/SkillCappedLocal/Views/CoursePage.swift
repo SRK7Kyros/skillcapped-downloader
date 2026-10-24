@@ -112,7 +112,7 @@ extension Array where Element == CourseLesson {
     if here > 0, here < count { parts.append("\(here) on disk") }
     let bytes = reduce(Int64(0)) { $0 + ($1.local?.bytes ?? 0) }
     if bytes > 0 { parts.append(Format.bytes(bytes)) }
-    let seconds = reduce(0) { $0 + max($1.seconds, 0) }
+    let seconds = reduce(0) { $0 + Swift.max($1.seconds, 0) }
     if seconds > 0 { parts.append(Format.clock(seconds)) }
     return parts.joined(separator: " · ")
   }

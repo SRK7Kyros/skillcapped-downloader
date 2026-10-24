@@ -10,6 +10,6 @@ struct CourseView: View {
   @EnvironmentObject private var progress: ProgressStore
 
   var body: some View {
-    CoursePage(model: .library(course) { progress.fraction(for: $0) })
+    CoursePage(page: .library(course) { progress.fraction(for: $0) })
   }
 }
