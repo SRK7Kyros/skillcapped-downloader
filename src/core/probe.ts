@@ -1,20 +1,25 @@
 /**
- * Segment enumeration. There is no upstream playlist, so the tail is found by
- * probing: `-> 403` means the part does not exist, `-> 200` means it does.
+ * Segment enumeration.
  *
- * The search is a bracketing exponential scan followed by a binary search —
- * NOT a walk around `duration / 10`. A duration-derived hint is only a
- * starting point, because an unknown or stale duration must never produce a
- * truncated file, and a 4K feature can run to hundreds of segments.
+ * A rendition's own manifest is read first: it lists exactly the parts that
+ * belong to the video, so its last entry is where the video ends. That matters,
+ * because the distribution also keeps 200-answering parts from an older, longer
+ * encode behind that entry — probing for the tail happily appends them.
+ *
+ * Only when a video publishes no manifest is the tail found by probing:
+ * `-> 403` means the part does not exist, `-> 200` means it does. The search is
+ * a bracketing exponential scan followed by a binary search — NOT a walk around
+ * `duration / 10`, because an unknown or stale duration must never produce a
+ * truncated file, and a 4K feature can run to hundreds of parts.
  */
 
-import { expectedSegmentCount, segmentUrl } from "./cdn.ts"
-import { headOk } from "./http.ts"
+import { expectedSegmentCount, parseManifest, playlistUrl, SEGMENT_SECONDS, segmentUrl } from "./cdn.ts"
+import { fetchWithRetry, headOk } from "./http.ts"
 
 /** Hard cap so a broken CDN response cannot turn into an unbounded scan. */
 const MAX_SEGMENTS = 20_000
 
-const cache = new Map<string, number>()
+const cache = new Map<string, SegmentPlan>()
 const cacheKey = (uuid: string, quality: number) => `${uuid}:${quality}`
 
 export class SegmentError extends Error {
@@ -27,23 +32,39 @@ export class SegmentError extends Error {
   }
 }
 
+export type SegmentPlan = {
+  count: number
+  /** Per-part durations from the manifest; empty when the tail was probed. */
+  durations: number[]
+  /** The video's length in seconds, exact when a manifest was read. */
+  duration: number
+  source: "manifest" | "probe"
+}
+
 /** Does this rendition exist at all? (index 1 exists for every published video) */
 export async function qualityAvailable(uuid: string, quality: number, signal?: AbortSignal): Promise<boolean> {
   return headOk(segmentUrl(uuid, quality, 1), signal)
 }
 
 /**
- * Largest segment index that exists. `hint` is the duration-derived estimate;
- * only its magnitude is used, and the true answer is found by probing.
+ * The parts that belong to this rendition: from its manifest when it has one,
+ * otherwise from a probe of the tail.
  */
-export async function resolveSegmentCount(
+export async function resolveSegments(
   uuid: string,
   quality: number,
   durationSec: number,
   signal?: AbortSignal,
-): Promise<number> {
-  const memo = cache.get(cacheKey(uuid, quality))
-  if (memo !== undefined) return memo
+): Promise<SegmentPlan> {
+  const key = cacheKey(uuid, quality)
+  const memo = cache.get(key)
+  if (memo) return memo
+
+  const manifest = await readManifest(uuid, quality, signal)
+  if (manifest) {
+    cache.set(key, manifest)
+    return manifest
+  }
 
   const probe = (index: number) => headOk(segmentUrl(uuid, quality, index), signal)
 
@@ -54,8 +75,51 @@ export async function resolveSegmentCount(
   const last = await findLastSegment(probe, expectedSegmentCount(durationSec))
   if (last < 1) throw new SegmentError(`No segments found for ${uuid} at ${quality}`, "no_segments")
 
-  cache.set(cacheKey(uuid, quality), last)
-  return last
+  const plan: SegmentPlan = {
+    count: last,
+    durations: [],
+    duration: last * SEGMENT_SECONDS,
+    source: "probe",
+  }
+  cache.set(key, plan)
+  return plan
+}
+
+/** Largest segment index that exists — the manifest's length when there is one. */
+export async function resolveSegmentCount(
+  uuid: string,
+  quality: number,
+  durationSec: number,
+  signal?: AbortSignal,
+): Promise<number> {
+  return (await resolveSegments(uuid, quality, durationSec, signal)).count
+}
+
+/**
+ * The rendition's published manifest, or `null` when it has none. A transient
+ * failure is retried: falling back to the probe after one flaky response is how
+ * stale parts get appended again.
+ */
+async function readManifest(
+  uuid: string,
+  quality: number,
+  signal?: AbortSignal,
+): Promise<SegmentPlan | null> {
+  try {
+    const response = await fetchWithRetry(playlistUrl(uuid, quality), { attempts: 3, signal })
+    if (!response.ok) return null
+    const manifest = parseManifest(await response.text())
+    if (!manifest) return null
+    return {
+      count: manifest.count,
+      durations: manifest.durations,
+      duration: manifest.duration,
+      source: "manifest",
+    }
+  } catch (error) {
+    if ((error as Error)?.name === "AbortError") throw error
+    return null
+  }
 }
 
 type Probe = (index: number) => Promise<boolean>

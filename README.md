@@ -69,9 +69,15 @@ in a Firestore document, so the catalogue is discovered — not hardcoded:
 2. The dump (`videos`, `commentaries`, `courses`, `tagInfo`, `videosToCourses`)
    is parsed tolerantly into one flat catalogue of ~6,450 items.
 3. Each video is served as discrete MPEG-TS segments on CloudFront
-   (`<uuid>/HIDDEN<quality>-<index>.ts`) with **no published playlist**, so the
-   segment count is found by bracketing from the expected length and binary
-   searching for the last one that answers `200`.
+   (`<uuid>/HIDDEN<quality>-<index>.ts`) beside a per-rendition manifest
+   (`<uuid>/HIDDEN<quality>.m3u8`). The manifest is the authority on where the
+   video ends: the distribution also keeps `200`-answering parts from an older,
+   longer encode behind its last entry, so a tail found by probing appends
+   footage that is not part of the video (measured: a 122-second lesson arriving
+   as 400 seconds, with the stale stretch carrying content from a different
+   edit). Only a video that publishes no manifest — about 2.5% of the catalogue
+   — is bracketed from the expected length and binary-searched for the last part
+   that answers `200`.
 4. Segments are fetched in parallel, concatenated in order (each part is deleted
    as it is consumed, so peak disk use is one copy plus one segment), remuxed to
    MP4 and atomically renamed into place.

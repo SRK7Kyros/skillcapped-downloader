@@ -7,7 +7,7 @@ import path from "node:path"
 import { QUALITIES, buildPlaylist, qualityById, segmentUrl } from "../core/cdn.ts"
 import { loadCatalog } from "../core/catalog.ts"
 import { libraryKey, scanLibrary } from "../core/library.ts"
-import { SegmentError, resolveSegmentCount } from "../core/probe.ts"
+import { SegmentError, resolveSegments } from "../core/probe.ts"
 import { planPreview } from "../core/preview.ts"
 import { contentRange, parseByteRange } from "../core/range.ts"
 import type { DownloadManager, JobRecord, JobSpec } from "../core/queue.ts"
@@ -332,8 +332,14 @@ async function handleStream(
   const catalog = store.index().get(uuid)
   const durationSec = Number(url.searchParams.get("dur")) || catalog?.durationSec || 0
 
-  const count = await resolveSegmentCount(uuid, quality, durationSec, request.signal)
-  const playlist = buildPlaylist(uuid, quality, count, durationSec || count * 10)
+  const plan = await resolveSegments(uuid, quality, durationSec, request.signal)
+  const playlist = buildPlaylist(
+    uuid,
+    quality,
+    plan.count,
+    plan.duration || durationSec || plan.count * 10,
+    plan.durations,
+  )
 
   return new Response(playlist, {
     headers: {

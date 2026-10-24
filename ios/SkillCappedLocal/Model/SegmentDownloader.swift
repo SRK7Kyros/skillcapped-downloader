@@ -52,11 +52,11 @@ enum DownloadError: LocalizedError {
 
 /// Downloads one lesson straight from the CDN, without a server.
 ///
-/// There is no upstream playlist: every lesson is a numbered run of 10-second
-/// MPEG-TS parts (`HIDDEN<quality>-<#####>.ts`), so the tail is found by probing
-/// and the parts are merged into one transport stream — which is what gets
-/// stored, because iOS plays MPEG-TS through its HLS stack and not at all as a
-/// bare file.
+/// Each lesson is a numbered run of 10-second MPEG-TS parts
+/// (`HIDDEN<quality>-<#####>.ts`) beside a per-rendition manifest that names the
+/// parts belonging to the video, and the parts are merged into one transport
+/// stream — which is what gets stored, because iOS plays MPEG-TS through its HLS
+/// stack and not at all as a bare file.
 actor SegmentDownloader {
   static let shared = SegmentDownloader()
 
@@ -88,11 +88,17 @@ actor SegmentDownloader {
     return found
   }
 
-  /// Largest part index that exists. A duration-derived hint is only a starting
-  /// point: an unknown or stale duration must never produce a truncated file.
+  /// Largest part index that exists — read from the rendition's own manifest,
+  /// and probed only when the video publishes none. A duration-derived hint is
+  /// just where that probe starts.
   func segmentCount(uuid: String, qualityId: Int, durationSec: Int) async throws -> Int {
     let key = "\(uuid):\(qualityId)"
     if let cached = countCache[key] { return cached }
+
+    if let listing = await publishedListing(uuid: uuid, qualityId: qualityId) {
+      countCache[key] = listing.count
+      return listing.count
+    }
 
     func exists(_ index: Int) async -> Bool {
       guard let url = Self.segmentURL(uuid: uuid, qualityId: qualityId, index: index) else { return false }
@@ -123,8 +129,29 @@ actor SegmentDownloader {
     return lo
   }
 
-  // MARK: - Download
+  /// The rendition's manifest, or `nil` when it has none. A dropped connection is
+  /// retried once: falling back to probing after one flaky response is how the
+  /// stale parts find their way back in.
+  private func publishedListing(uuid: String, qualityId: Int) async -> HlsManifest.Listing? {
+    guard let url = HlsManifest.url(uuid: uuid, qualityId: qualityId) else { return nil }
+    var request = URLRequest(url: url)
+    request.timeoutInterval = 20
+    request.setValue("SkillCappedLocal/2.0 (iOS)", forHTTPHeaderField: "User-Agent")
 
+    for attempt in 1...2 {
+      do {
+        let (data, response) = try await URLSession.shared.data(for: request)
+        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+        guard (200..<300).contains(status) else { return nil }
+        return HlsManifest.listing(String(decoding: data, as: UTF8.self))
+      } catch {
+        if attempt == 2 || Task.isCancelled { return nil }
+      }
+    }
+    return nil
+  }
+
+  // MARK: - Download
   func download(
     request: DownloadRequest,
     requestedQuality: String?,

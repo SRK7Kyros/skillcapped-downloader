@@ -91,8 +91,8 @@ enum DownloadPlan {
     )
   }
 
-  /// A duration-derived estimate; only its magnitude matters, the true tail is
-  /// found by probing.
+  /// A duration-derived estimate, used as the starting point for a probe — and
+  /// only for a video that publishes no manifest.
   static func expectedSegments(durationSec: Int) -> Int {
     max(1, Int(ceil(Double(max(0, durationSec)) / segmentSeconds)))
   }
