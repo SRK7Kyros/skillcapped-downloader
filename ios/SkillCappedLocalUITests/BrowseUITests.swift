@@ -133,9 +133,9 @@ final class BrowseUITests: XCTestCase {
     let catalogueMeta = numbersLine(in: app, "the catalogue page")
 
     XCTAssertEqual(
-      lessonCount(in: libraryNumbers),
-      lessonCount(in: catalogueMeta.label),
-      "the same course should count the same lessons on both pages — \(libraryNumbers) / \(catalogueMeta.label)"
+      numbersShape(of: libraryNumbers),
+      numbersShape(of: catalogueMeta.label),
+      "the numbers line should use the same fields in the same order on both pages — \(libraryNumbers) / \(catalogueMeta.label)"
     )
 
     XCTAssertEqual(
@@ -170,9 +170,22 @@ final class BrowseUITests: XCTestCase {
     return meta
   }
 
-  /// The leading number of a numbers line — the course's lesson count, which must
-  /// read the same whichever surface opened the course.
-  private func lessonCount(in line: String) -> String? {
-    line.components(separatedBy: " ").first
+  /// The field kinds a numbers line uses, in order — `lessons|size|clock`.
+  ///
+  /// The values differ by design: the library counts the files it holds, while
+  /// Discover counts the lessons the course lists, so a course that is not fully
+  /// downloaded legitimately reads 2 lessons on one page and 3 on the other. The
+  /// shape must not differ, which is what "the data shown also differs" meant.
+  private func numbersShape(of line: String) -> [String] {
+    line.components(separatedBy: " · ").map { part in
+      if part.contains("lesson") { return "lessons" }
+      if part.range(of: #"^\d+[.,]\d+ (KB|MB|GB)$"#, options: .regularExpression) != nil {
+        return "size"
+      }
+      if part.range(of: #"^\d+:\d\d$"#, options: .regularExpression) != nil {
+        return "clock"
+      }
+      return "other(\(part))"
+    }
   }
 }
