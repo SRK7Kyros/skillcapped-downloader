@@ -2,7 +2,6 @@ import AVFoundation
 import AVKit
 import Combine
 import SwiftUI
-import UIKit
 
 /// The player, with chrome of our own instead of `AVPlayerViewController`'s.
 ///
@@ -98,6 +97,8 @@ struct PlayerScreen: View {
             canStepBack: coordinator.neighbour(of: current, forward: false) != nil,
             canStepForward: coordinator.neighbour(of: current, forward: true) != nil,
             pictureInPicture: pictureInPicture.available,
+            window: proxy.size,
+            insets: proxy.safeAreaInsets,
             close: { dismiss() },
             togglePlay: { togglePlay() },
             skip: { skip($0) },
@@ -484,6 +485,13 @@ private struct Chrome: View {
   let canStepForward: Bool
   let pictureInPicture: Bool
 
+  /// The window the chrome is drawn in and the safe area it has to clear. Both
+  /// come from the layout rather than from the window: the picture runs through
+  /// the safe area, so the chrome needs the insets itself, and the layout is
+  /// re-run when the phone turns — which a UIKit read inside a body is not.
+  let window: CGSize
+  let insets: EdgeInsets
+
   let close: () -> Void
   let togglePlay: () -> Void
   let skip: (Double) -> Void
@@ -496,8 +504,9 @@ private struct Chrome: View {
   var body: some View {
     VStack(spacing: 0) {
       header
-        .padding(.horizontal, 10)
-        .padding(.top, insets.top + 4)
+        .padding(.leading, PlayerChromeLayout.edge(inset: insets.leading))
+        .padding(.trailing, PlayerChromeLayout.edge(inset: insets.trailing))
+        .padding(.top, PlayerChromeLayout.edge(inset: insets.top))
 
       Spacer(minLength: 0)
 
@@ -507,26 +516,14 @@ private struct Chrome: View {
         }
         bar
       }
-      .padding(.horizontal, 10)
-      .padding(.bottom, insets.bottom + 8)
+      .padding(.leading, PlayerChromeLayout.edge(inset: insets.leading))
+      .padding(.trailing, PlayerChromeLayout.edge(inset: insets.trailing))
+      .padding(.bottom, PlayerChromeLayout.edge(inset: insets.bottom))
     }
   }
 
-  /// The window the chrome is drawn in, asked for its safe area and its width:
-  /// the picture runs through the safe area, so neither is inherited from the
-  /// layout, and the bar has to float clear of the island and the home
-  /// indicator by itself.
-  private var windowScene: UIWindowScene? {
-    let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
-    return scenes.first { $0.activationState == .foregroundActive } ?? scenes.first
-  }
-
-  private var insets: UIEdgeInsets {
-    windowScene?.keyWindow?.safeAreaInsets ?? .zero
-  }
-
   private var floatsControls: Bool {
-    PlayerChromeLayout.floatsControls(width: windowScene?.keyWindow?.bounds.width ?? 0)
+    PlayerChromeLayout.floatsControls(width: window.width)
   }
 
   private var rateLabel: String {

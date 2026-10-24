@@ -28,4 +28,17 @@ final class PlayerChromeLayoutTests: XCTestCase {
   func testAWidthNobodyHasMeasuredKeepsTheSingleRow() {
     XCTAssertFalse(PlayerChromeLayout.floatsControls(width: 0))
   }
+
+  func testAPhoneUprightKeepsItsOwnMargin() {
+    XCTAssertEqual(PlayerChromeLayout.edge(inset: 0), PlayerChromeLayout.edgeMargin)
+  }
+
+  func testAPhoneOnItsSideClearsTheCornerItTurned() {
+    XCTAssertEqual(PlayerChromeLayout.edge(inset: 59), 71, "the side inset a notched phone reports in landscape")
+    XCTAssertGreaterThan(
+      PlayerChromeLayout.edge(inset: 59),
+      PlayerChromeLayout.edge(inset: 0),
+      "a turned corner needs more room than a flat edge"
+    )
+  }
 }

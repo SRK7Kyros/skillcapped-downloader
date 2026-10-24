@@ -16,4 +16,18 @@ enum PlayerChromeLayout {
   static func floatsControls(width: CGFloat) -> Bool {
     width > 0 && width < floatingBelow
   }
+
+  /// The air kept beside a control on top of the safe area it has to clear. The
+  /// insets carry the island, the home indicator and the corners a phone turns
+  /// on its side; this is the little more that stops a control from reading as
+  /// clipped by the screen's own shape or as touching its edge.
+  static let edgeMargin: CGFloat = 12
+
+  /// How far a control sits from the window's edge. Portrait has no side inset,
+  /// so a phone upright keeps its margin; on its side the chrome clears the
+  /// corner it turned, and the bar and the header agree, which is what makes the
+  /// transport read as centred in the picture rather than in the glass.
+  static func edge(inset: CGFloat) -> CGFloat {
+    inset + edgeMargin
+  }
 }

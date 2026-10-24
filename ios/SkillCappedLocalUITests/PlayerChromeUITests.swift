@@ -97,6 +97,45 @@ final class PlayerChromeUITests: XCTestCase {
       "a landscape window has room for the whole transport in one row"
     )
 
+    // What a landscape screenshot caught: the close button and the Picture in
+    // Picture switch sat about ten points from the glass, under the corner the
+    // phone had just turned, the header touched the top edge, and the bar kept
+    // the same ten-point margins — so the chrome read as clipped and off-centre
+    // against the letterboxed picture.
+    let screen = app.frame
+    let close = app.buttons["Close"]
+    XCTAssertTrue(close.exists, "the header should carry a close button; window \(screen)")
+    if close.exists {
+      XCTAssertGreaterThanOrEqual(
+        close.frame.minX - screen.minX,
+        50,
+        "the close button should clear the corner a turned phone carries; close at \(close.frame), window \(screen)"
+      )
+      XCTAssertGreaterThanOrEqual(
+        close.frame.minY - screen.minY,
+        8,
+        "…and should not be trimmed by the top edge"
+      )
+    }
+
+    let pictureInPicture = app.buttons["Picture in picture"]
+    if pictureInPicture.exists {
+      XCTAssertGreaterThanOrEqual(
+        screen.maxX - pictureInPicture.frame.maxX,
+        50,
+        "Picture in picture should clear the right corner too; it sits at \(pictureInPicture.frame), window \(screen)"
+      )
+    }
+
+    let leading = app.buttons["Back 10 seconds"].frame.minX - screen.minX
+    let trailing = screen.maxX - app.buttons["Next lesson"].frame.maxX
+    XCTAssertEqual(
+      leading,
+      trailing,
+      accuracy: 4,
+      "the transport should sit centred in the window: \(leading) points at the left, \(trailing) at the right"
+    )
+
     assertPictureInPictureAtTheTop(in: app, above: middle.min() ?? 0)
 
     let landscape = XCTAttachment(screenshot: app.screenshot())

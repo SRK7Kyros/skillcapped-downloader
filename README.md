@@ -309,12 +309,18 @@ on the phone itself, into the same folders the desktop build writes.
   in the row, and the bar keeps the three a thumb reaches for plus a timeline with
   room for **both times** — the width the moved controls gave back. **Picture in
   Picture alone sits in the screen's top-right corner**, over the close button and
-  the lesson's name. It reads the window's own safe area and width for its insets —
-  the picture is drawn through them — so it floats clear of the island and the home
-  indicator; a full-width drawer raised from the bottom of the screen was what made
-  an earlier build's chrome read as a system sheet. `PlayerChromeUITests` pins both
+  the lesson's name. The chrome takes the window's safe area from the layout — all
+  four edges, re-read when the phone turns — and adds one margin to it
+  (`PlayerChromeLayout.edge`), so the header and the bar clear the island, the home
+  indicator **and the corners a landscape phone turns**, and their two ends line up
+  with each other and with the letterboxed picture's edges. Reading the window's
+  insets inside the body was what put a landscape build's corners ten points from
+  the glass, under the curve, with the bar off-centre against the picture and its
+  header touching the top edge. `PlayerChromeUITests` pins both
   shapes: upright the three floating controls share a band above the bar's, on its
-  side every control but Picture in Picture shares one band — and both cases insist
+  side every control but Picture in Picture shares one band, the close button and
+  Picture in Picture each sit at least fifty points clear of the turned corner, and
+  the transport's ends are equidistant from the window's — and both cases insist
   the elapsed and remaining readouts are on screen. **The player takes the sound
   over too** (`Support/AudioSession.swift`): an app that says nothing runs on the
   `soloAmbient` category, which the ringer switch silences and which stops at the
