@@ -38,6 +38,11 @@ enum TSRemux {
   /// reads, small enough that cancelling is felt at once.
   static let chunk = 4 << 20
 
+  /// How many samples a track may hold before the reader is held back. A couple
+  /// of seconds: enough that the writer is never left waiting for the reader,
+  /// small enough that a lesson is never carried in memory.
+  static let backlog = 96
+
   /// Rewrites `source` into `destination`, reporting how much of the file has
   /// been read (0…1) and answering how many seconds it holds.
   ///
@@ -78,7 +83,7 @@ enum TSRemux {
     guard writer.canAdd(video) else { throw Failure.writer("the video track was refused") }
     writer.add(video)
 
-    var audio: AVAssetWriterInput?
+    var sound: AVAssetWriterInput?
     if let audioFormat {
       let input = AVAssetWriterInput(
         mediaType: .audio,
@@ -88,15 +93,22 @@ enum TSRemux {
       input.expectsMediaDataInRealTime = false
       // Only a video track takes a media time scale: asking an audio one for a
       // non-default value raises, which is how this was learned.
-      guard writer.canAdd(input) else { throw Failure.unusableAudio }
+      guard writer.canAdd(input) else { throw Failure.writer("the sound track was refused") }
       writer.add(input)
-      audio = input
+      sound = input
     }
 
     guard writer.startWriting() else {
       throw Failure.writer(writer.error?.localizedDescription ?? "the writer did not start")
     }
     writer.startSession(atSourceTime: .zero)
+
+    var tracks = [Interleaver.Track(input: video, format: videoFormat)]
+    if let sound, let audioFormat {
+      tracks.append(Interleaver.Track(input: sound, format: audioFormat))
+    }
+    let interleaver = Interleaver(writer: writer, tracks: tracks)
+    let hasSound = tracks.count > 1
 
     /// The frame waiting for the next one, because a sample's duration is the gap
     /// to its successor and the last one has none.
@@ -105,9 +117,8 @@ enum TSRemux {
     var end: Int64 = 0
     var failure: Error?
 
+    let clock = CMTimeScale(TSDemuxer.clock)
     let demuxer = TSDemuxer()
-    var fedVideo = 0
-    var fedAudio = 0
     demuxer.onSample = { sample in
       guard failure == nil else { return }
       do {
@@ -122,47 +133,36 @@ enum TSRemux {
           if let previous = pending {
             let ticks = max(dts - previous.dts, 1)
             lastTicks = ticks
-            try feed(
-              video,
-              into: writer,
-              payload: previous.payload,
-              format: videoFormat,
-              pts: previous.pts,
-              dts: previous.dts,
-              duration: CMTime(value: ticks, timescale: CMTimeScale(TSDemuxer.clock)),
-              sync: previous.sync
+            try interleaver.add(
+              Interleaver.Sample(
+                payload: previous.payload,
+                pts: CMTime(value: previous.pts, timescale: clock),
+                dts: CMTime(value: previous.dts, timescale: clock),
+                duration: CMTime(value: ticks, timescale: clock),
+                sync: previous.sync
+              ),
+              track: 0
             )
-            fedVideo += 1
           }
           pending = (sample.payload, pts, dts, sample.isSync)
           end = max(end, pts)
 
         case .audio:
-          guard let audio, let audioFormat else { return }
-          try feed(
-            audio,
-            into: writer,
-            payload: sample.payload,
-            format: audioFormat,
-            pts: pts,
-            dts: pts,
-            duration: audioFrame,
-            sync: true
+          guard hasSound else { return }
+          try interleaver.add(
+            Interleaver.Sample(
+              payload: sample.payload,
+              pts: CMTime(value: pts, timescale: clock),
+              dts: CMTime(value: pts, timescale: clock),
+              duration: audioFrame,
+              sync: true
+            ),
+            track: 1
           )
-          fedAudio += 1
           end = max(end, pts)
         }
       } catch {
-        if let named = error as? Failure, case let .writer(reason) = named {
-          let picture = video.isReadyForMoreMediaData ? "ready" : "blocked"
-          let sound = audio.map { $0.isReadyForMoreMediaData ? "ready" : "blocked" } ?? "absent"
-          failure = Failure.writer(
-            "\(reason) — after \(fedVideo) picture and \(fedAudio) sound samples; "
-              + "picture \(picture), sound \(sound)"
-          )
-        } else {
-          failure = error
-        }
+        failure = error
       }
     }
 
@@ -187,19 +187,21 @@ enum TSRemux {
       if let failure { throw failure }
 
       if let previous = pending {
-        try feed(
-          video,
-          into: writer,
-          payload: previous.payload,
-          format: videoFormat,
-          pts: previous.pts,
-          dts: previous.dts,
-          duration: CMTime(value: lastTicks, timescale: CMTimeScale(TSDemuxer.clock)),
-          sync: previous.sync
+        try interleaver.add(
+          Interleaver.Sample(
+            payload: previous.payload,
+            pts: CMTime(value: previous.pts, timescale: clock),
+            dts: CMTime(value: previous.dts, timescale: clock),
+            duration: CMTime(value: lastTicks, timescale: clock),
+            sync: previous.sync
+          ),
+          track: 0
         )
         pending = nil
         end = max(end, previous.pts + lastTicks)
       }
+
+      try interleaver.finish()
     } catch {
       writer.cancelWriting()
       try? FileManager.default.removeItem(at: destination)
@@ -207,7 +209,7 @@ enum TSRemux {
     }
 
     video.markAsFinished()
-    audio?.markAsFinished()
+    sound?.markAsFinished()
 
     let finished = DispatchSemaphore(value: 0)
     writer.finishWriting { finished.signal() }
@@ -221,46 +223,7 @@ enum TSRemux {
     return Double(end) / Double(TSDemuxer.clock)
   }
 
-  // MARK: - Samples
-
-  private static func feed(
-    _ input: AVAssetWriterInput,
-    into writer: AVAssetWriter,
-    payload: Data,
-    format: CMFormatDescription,
-    pts: Int64,
-    dts: Int64,
-    duration: CMTime,
-    sync: Bool
-  ) throws {
-    // A writer that has failed never asks for more data, so the wait has to end
-    // and the reason has to carry what the writer said rather than a shrug.
-    var waited = 0.0
-    while !input.isReadyForMoreMediaData {
-      if let reason = writer.error {
-        throw Failure.writer("the \(input.mediaType.rawValue) track was refused: \(reason.localizedDescription)")
-      }
-      guard waited < 5 else {
-        throw Failure.writer(
-          "the \(input.mediaType.rawValue) track stopped accepting data (writer status \(writer.status.rawValue))"
-        )
-      }
-      Thread.sleep(forTimeInterval: 0.004)
-      waited += 0.004
-    }
-
-    let buffer = try sampleBuffer(
-      payload,
-      format: format,
-      pts: CMTime(value: pts, timescale: CMTimeScale(TSDemuxer.clock)),
-      dts: CMTime(value: dts, timescale: CMTimeScale(TSDemuxer.clock)),
-      duration: duration,
-      sync: sync
-    )
-    guard input.append(buffer) else {
-      throw Failure.writer(writer.error?.localizedDescription ?? "a sample was refused")
-    }
-  }
+  // MARK: - Frames
 
   private static func sampleBuffer(
     _ payload: Data,
@@ -335,6 +298,112 @@ enum TSRemux {
       )
     }
     return buffer
+  }
+
+  // MARK: - Interleaving
+
+  /// Holds each track's samples until the writer will take them.
+  ///
+  /// An `AVAssetWriter` writes the tracks interleaved and stops taking data for
+  /// a track that has run ahead of the other, offering it again only once the
+  /// other has caught up. So a track can never be waited on by itself: the wait
+  /// would hold back the very samples that let the writer resume, and the export
+  /// would stop dead with the writer still `writing` and no error to show. Both
+  /// queues are therefore emptied together, always.
+  private final class Interleaver {
+    struct Sample {
+      let payload: Data
+      let pts: CMTime
+      let dts: CMTime
+      let duration: CMTime
+      let sync: Bool
+    }
+
+    final class Track {
+      let input: AVAssetWriterInput
+      let format: CMFormatDescription
+      var samples: [Sample] = []
+      var fed = 0
+
+      init(input: AVAssetWriterInput, format: CMFormatDescription) {
+        self.input = input
+        self.format = format
+      }
+    }
+
+    private let writer: AVAssetWriter
+    private let tracks: [Track]
+
+    init(writer: AVAssetWriter, tracks: [Track]) {
+      self.writer = writer
+      self.tracks = tracks
+    }
+
+    var isFull: Bool { tracks.contains { $0.samples.count > TSRemux.backlog } }
+
+    var isEmpty: Bool { tracks.allSatisfy { $0.samples.isEmpty } }
+
+    /// Queues one sample and hands the writer whatever it will take, waiting
+    /// only while a track is carrying more than it should.
+    func add(_ sample: Sample, track index: Int) throws {
+      tracks[index].samples.append(sample)
+      try pump(until: { !isFull }, abandoning: true)
+    }
+
+    /// Hands over everything still queued, waiting for the writer to want it.
+    func finish() throws {
+      try pump(until: { isEmpty }, abandoning: false)
+    }
+
+    /// Empties both queues as the writer asks. With `abandoning`, a writer that
+    /// will take nothing while another track has nothing left to hand over is
+    /// left to finish what it has: only the reader can end that wait, so
+    /// standing still would stop the export instead of pacing it.
+    private func pump(until settled: () -> Bool, abandoning: Bool) throws {
+      var waited = 0.0
+      while true {
+        var moved = false
+        for track in tracks {
+          while track.input.isReadyForMoreMediaData, !track.samples.isEmpty {
+            try feed(track, track.samples.removeFirst())
+            track.fed += 1
+            moved = true
+          }
+        }
+        if settled() { return }
+        if abandoning, !moved, tracks.contains(where: { $0.samples.isEmpty }) { return }
+        if let reason = writer.error {
+          throw Failure.writer("the writer refused a sample: \(reason.localizedDescription)")
+        }
+        guard writer.status == .writing, waited < 20 else {
+          throw Failure.writer(
+            "the writer stopped accepting data (status \(writer.status.rawValue); \(tally) written)"
+          )
+        }
+        Thread.sleep(forTimeInterval: 0.002)
+        waited += 0.002
+      }
+    }
+
+    private func feed(_ track: Track, _ sample: Sample) throws {
+      let buffer = try TSRemux.sampleBuffer(
+        sample.payload,
+        format: track.format,
+        pts: sample.pts,
+        dts: sample.dts,
+        duration: sample.duration,
+        sync: sample.sync
+      )
+      guard track.input.append(buffer) else {
+        throw Failure.writer(writer.error?.localizedDescription ?? "a sample was refused")
+      }
+    }
+
+    private var tally: String {
+      tracks
+        .map { "\($0.input.mediaType == .video ? "picture" : "sound") \($0.fed)" }
+        .joined(separator: ", ")
+    }
   }
 
   // MARK: - Format descriptions
