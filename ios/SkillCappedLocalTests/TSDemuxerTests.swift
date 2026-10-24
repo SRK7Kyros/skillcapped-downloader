@@ -192,6 +192,71 @@ final class TSDemuxerTests: XCTestCase {
 
   // MARK: - The remux
 
+  /// A value a background job fills in and the test reads afterwards.
+  private final class Handoff<T>: @unchecked Sendable {
+    private let lock = NSLock()
+    private var stored: T?
+
+    var value: T? {
+      get {
+        lock.lock()
+        defer { lock.unlock() }
+        return stored
+      }
+      set {
+        lock.lock()
+        stored = newValue
+        lock.unlock()
+      }
+    }
+  }
+
+  /// The reports a repackaging makes, kept where the job writes them.
+  private final class Reports: @unchecked Sendable {
+    private let lock = NSLock()
+    private var values: [Double] = []
+
+    func add(_ value: Double) {
+      lock.lock()
+      values.append(value)
+      lock.unlock()
+    }
+
+    var count: Int {
+      lock.lock()
+      defer { lock.unlock() }
+      return values.count
+    }
+
+    var last: Double? {
+      lock.lock()
+      defer { lock.unlock() }
+      return values.last
+    }
+  }
+
+  /// What a repackaging gave, or how it says it went wrong — a plain value, so
+  /// it can cross a thread boundary in one piece.
+  private enum Outcome: Sendable {
+    case done(Double)
+    case failed(String)
+  }
+
+  /// Runs a job off the main thread and answers what it gave, or nil if it never
+  /// answered. The writer's own callbacks must not queue behind the thread that
+  /// is watching it: a synchronous call here left the video track refusing data
+  /// for ever, with the writer still `writing` and no error to show.
+  private func offMain<T: Sendable>(_ job: @escaping @Sendable () -> T) -> T? {
+    let handoff = Handoff<T>()
+    let done = DispatchSemaphore(value: 0)
+    DispatchQueue.global(qos: .userInitiated).async {
+      handoff.value = job()
+      done.signal()
+    }
+    done.wait()
+    return handoff.value
+  }
+
   /// The whole pipeline once, because each part can look right on its own and
   /// still not add up to a file anything will open: a demuxed sample is only
   /// useful if the writer accepts it.
@@ -200,27 +265,42 @@ final class TSDemuxerTests: XCTestCase {
       .appendingPathComponent("remux-\(UUID().uuidString).mp4")
     defer { try? FileManager.default.removeItem(at: destination) }
 
-    var progress: [Double] = []
+    let reports = Reports()
+    let source = try fixture()
+    let outcome = offMain { () -> Outcome in
+      do {
+        return .done(
+          try TSRemux.toMP4(
+            source: source,
+            destination: destination,
+            progress: { reports.add($0) }
+          )
+        )
+      } catch {
+        let cocoa = error as NSError
+        return .failed(
+          """
+          \(String(describing: type(of: error))) (\(cocoa.domain) \(cocoa.code)) \
+          after \(reports.count) reports, last \(reports.last ?? -1): \
+          \(cocoa.localizedDescription)
+          """
+        )
+      }
+    }
+
     let seconds: Double
-    do {
-      seconds = try TSRemux.toMP4(
-        source: try fixture(),
-        destination: destination,
-        progress: { progress.append($0) }
-      )
-    } catch {
-      let cocoa = error as NSError
-      XCTFail(
-        """
-        the repackaging threw \(String(describing: type(of: error))) \
-        (\(cocoa.domain) \(cocoa.code)) after \(progress.count) reports, \
-        last \(progress.last ?? -1): \(cocoa.localizedDescription)
-        """
-      )
+    switch outcome {
+    case let .done(value)?:
+      seconds = value
+    case let .failed(reason)?:
+      XCTFail("the repackaging threw \(reason)")
+      return
+    case nil:
+      XCTFail("the repackaging never answered")
       return
     }
 
-    XCTAssertEqual(progress.last, 1, "the progress should finish where the banner says it does")
+    XCTAssertEqual(reports.last, 1, "the progress should finish where the banner says it does")
     XCTAssertTrue((2...4).contains(seconds), "the fixture is about three seconds, not \(seconds)")
 
     let size = try FileManager.default.attributesOfItem(atPath: destination.path)[.size] as? Int64

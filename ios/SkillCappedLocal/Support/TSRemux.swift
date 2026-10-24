@@ -154,8 +154,11 @@ enum TSRemux {
         }
       } catch {
         if let named = error as? Failure, case let .writer(reason) = named {
+          let picture = video.isReadyForMoreMediaData ? "ready" : "blocked"
+          let sound = audio.map { $0.isReadyForMoreMediaData ? "ready" : "blocked" } ?? "absent"
           failure = Failure.writer(
-            "\(reason) — after \(fedVideo) picture and \(fedAudio) sound samples"
+            "\(reason) — after \(fedVideo) picture and \(fedAudio) sound samples; "
+              + "picture \(picture), sound \(sound)"
           )
         } else {
           failure = error
