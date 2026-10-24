@@ -220,7 +220,14 @@ on the phone itself, into the same folders the desktop build writes.
   elementary streams, the PES headers for the stamps, Annex-B rewritten to AVCC
   with the parameter sets lifted into the format description, the ADTS headers
   peeled off the sound), feeds them to `AVAssetWriter` with no re-encode, and
-  removes the half-written MP4 if it fails or is stopped. A lesson that is still
+  removes the half-written MP4 if it fails or is stopped. Two things about that
+  writer are worth knowing before touching it: it throttles **per track**, so
+  one queue fills both and waits on the pair (waiting on a single input while the
+  other is unfed deadlocks the export with no error anywhere), and its sound
+  format is an **ES descriptor** wrapped around the stream's
+  `AudioSpecificConfig` — handed the bare two-byte config it still writes the
+  audio track, but the file's `esds` cannot be parsed and the export plays with
+  no sound at all. A lesson that is still
   only in iCloud is a shadow file, so the row offers neither action — there is no
   byte to move and no sheet that could say "fetching it first". Delete asks once
   (`Delete this video?`, naming the space it frees), forgets the queue entry and
