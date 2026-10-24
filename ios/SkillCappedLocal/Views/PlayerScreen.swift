@@ -43,12 +43,24 @@ struct PlayerScreen: View {
   @State private var drag: Drag?
   @StateObject private var pictureInPicture = PictureInPicture()
 
+  @State private var zoom: CGFloat = PlayerZoom.minScale
+  @State private var zoomOffset: CGSize = .zero
+  @State private var zoomBase: CGFloat?
+  @State private var zoomBaseOffset: CGSize = .zero
+  @State private var zooming = false
+
+  @StateObject private var keeper = OrientationKeeper()
+  @State private var remote = RemoteControls()
+  @State private var artwork: UIImage?
+
   /// What a drag is doing, fixed at the first movement so a gesture that starts
-  /// across the screen cannot become a brightness change halfway.
+  /// across the screen cannot become a brightness change halfway. A zoomed
+  /// picture pans instead of scrubbing, the way a photograph does.
   private enum Drag: Equatable {
     case seek(from: Double)
     case brightness(from: Double)
     case volume(from: Double)
+    case pan(from: CGSize)
   }
 
   private static let rates: [Float] = [1, 1.25, 1.5, 2]
@@ -60,58 +72,15 @@ struct PlayerScreen: View {
 
   var body: some View {
     GeometryReader { proxy in
-      ZStack {
-        Color.black
+      let turn = PlayerOrientation.turn(device: keeper.device, window: proxy.size)
+      let size = turn.isTurned
+        ? CGSize(width: proxy.size.height, height: proxy.size.width)
+        : proxy.size
 
-        if let player {
-          PlayerSurface(player: player, pictureInPicture: pictureInPicture)
-        }
-
-        gestures(size: proxy.size)
-
-        if let failure {
-          message(failure)
-        } else if player == nil {
-          loading(waitingForCloud ? "Downloading from iCloud…" : "Opening…")
-        }
-
-        if stalled && player != nil {
-          ProgressView()
-            .controlSize(.large)
-            .tint(.white)
-        }
-
-        if let hud {
-          PlayerHUDView(hud: hud)
-            .transition(.opacity.combined(with: .scale(scale: 0.94)))
-            .allowsHitTesting(false)
-        }
-
-        if chrome, player != nil {
-          Chrome(
-            lesson: current,
-            playing: playing,
-            position: position,
-            duration: duration,
-            rate: rate,
-            canStepBack: coordinator.neighbour(of: current, forward: false) != nil,
-            canStepForward: coordinator.neighbour(of: current, forward: true) != nil,
-            pictureInPicture: pictureInPicture.available,
-            window: proxy.size,
-            insets: proxy.safeAreaInsets,
-            close: { dismiss() },
-            togglePlay: { togglePlay() },
-            skip: { skip($0) },
-            step: { step($0) },
-            scrub: { position = $0 },
-            commit: { commit($0) },
-            changeRate: cycleRate,
-            togglePictureInPicture: { pictureInPicture.toggle() }
-          )
-          .transition(.opacity)
-        }
-      }
-      .ignoresSafeArea()
+      stage(size: size, insets: PlayerOrientation.insets(proxy.safeAreaInsets, turned: turn))
+        .frame(width: size.width, height: size.height)
+        .rotationEffect(turn.angle)
+        .frame(width: proxy.size.width, height: proxy.size.height)
     }
     .background(Color.black.ignoresSafeArea())
     .statusBarHidden()
@@ -121,6 +90,66 @@ struct PlayerScreen: View {
       guard let item = note.object as? AVPlayerItem, item === player?.currentItem else { return }
       completed()
     }
+  }
+
+  /// The picture and everything over it, at the size it is seen at — which is the
+  /// window's own size unless the phone is on its side with the window held
+  /// portrait, in which case the whole stage is turned and the two are swapped.
+  private func stage(size: CGSize, insets: EdgeInsets) -> some View {
+    ZStack {
+      Color.black
+
+      if let player {
+        PlayerSurface(player: player, pictureInPicture: pictureInPicture)
+          .scaleEffect(zoom)
+          .offset(zoomOffset)
+      }
+
+      gestures(size: size)
+
+      if let failure {
+        message(failure)
+      } else if player == nil {
+        loading(waitingForCloud ? "Downloading from iCloud…" : "Opening…")
+      }
+
+      if stalled && player != nil {
+        ProgressView()
+          .controlSize(.large)
+          .tint(.white)
+      }
+
+      if let hud {
+        PlayerHUDView(hud: hud)
+          .transition(.opacity.combined(with: .scale(scale: 0.94)))
+          .allowsHitTesting(false)
+      }
+
+      if chrome, player != nil {
+        Chrome(
+          lesson: current,
+          playing: playing,
+          position: position,
+          duration: duration,
+          rate: rate,
+          canStepBack: coordinator.neighbour(of: current, forward: false) != nil,
+          canStepForward: coordinator.neighbour(of: current, forward: true) != nil,
+          pictureInPicture: pictureInPicture.available,
+          window: size,
+          insets: insets,
+          close: { dismiss() },
+          togglePlay: { togglePlay() },
+          skip: { skip($0) },
+          step: { step($0) },
+          scrub: { position = $0 },
+          commit: { commit($0) },
+          changeRate: cycleRate,
+          togglePictureInPicture: { pictureInPicture.toggle() }
+        )
+        .transition(.opacity)
+      }
+    }
+    .ignoresSafeArea()
   }
 
   // MARK: - Pieces
@@ -170,17 +199,62 @@ struct PlayerScreen: View {
               skip(seconds)
               show(.skip(seconds))
             case .second:
+              drag = nil
+              zooming = false
               withAnimation(.easeInOut(duration: 0.2)) { chrome.toggle() }
               if chrome { showChrome() }
             }
           }
       )
       .simultaneousGesture(dragGesture(size: size))
+      .simultaneousGesture(magnifyGesture(size: size))
+  }
+
+  /// Pinching grows the picture around the fingers rather than the middle of the
+  /// screen (`PlayerZoom`), which is what makes it possible to look at a corner
+  /// of a lesson's UI. A pinch below fit springs back to fit.
+  private func magnifyGesture(size: CGSize) -> some Gesture {
+    MagnifyGesture(minimumScaleDelta: 0.01)
+      .onChanged { value in
+        let base = zoomBase ?? zoom
+        if zoomBase == nil {
+          zoomBase = base
+          zoomBaseOffset = zoomOffset
+          zooming = true
+          showChrome()
+        }
+        let next = PlayerZoom.clampScale(base * value.magnification)
+        zoom = next
+        zoomOffset = PlayerZoom.offset(
+          starting: zoomBaseOffset,
+          from: base,
+          to: next,
+          anchor: value.startAnchor,
+          size: size
+        )
+      }
+      .onEnded { _ in
+        zoomBase = nil
+        if zoom <= PlayerZoom.minScale + 0.02 {
+          withAnimation(.easeOut(duration: 0.22)) {
+            zoom = PlayerZoom.minScale
+            zoomOffset = .zero
+          }
+        }
+        // The two fingers of a pinch also arrive as a drag; the flag keeps that
+        // drag from turning the pinch into a seek.
+        Task { @MainActor in
+          try? await Task.sleep(nanoseconds: 150_000_000)
+          zooming = false
+        }
+        showChrome()
+      }
   }
 
   private func dragGesture(size: CGSize) -> some Gesture {
     DragGesture(minimumDistance: 12)
       .onChanged { value in
+        guard !zooming else { return }
         if drag == nil {
           drag = startDrag(value, size: size)
           showChrome()
@@ -214,11 +288,25 @@ struct PlayerScreen: View {
           SystemVolume.set(Float(level))
           show(.volume(level))
 
+        case let .pan(from)?:
+          zoomOffset = PlayerZoom.clamped(
+            CGSize(
+              width: from.width + value.translation.width,
+              height: from.height + value.translation.height
+            ),
+            scale: zoom,
+            size: size
+          )
+
         case .none:
           break
         }
       }
       .onEnded { value in
+        guard !zooming else {
+          drag = nil
+          return
+        }
         if case let .seek(from)? = drag {
           let target = PlayerMath.seek(
             from: from,
@@ -235,6 +323,7 @@ struct PlayerScreen: View {
   }
 
   private func startDrag(_ value: DragGesture.Value, size: CGSize) -> Drag {
+    if zoom > PlayerZoom.minScale + 0.01 { return .pan(from: zoomOffset) }
     let across = abs(value.translation.width) > abs(value.translation.height)
     if across { return .seek(from: position) }
     let channel = PlayerMath.channel(x: value.startLocation.x, width: size.width)
@@ -250,8 +339,64 @@ struct PlayerScreen: View {
   /// open: ask iCloud for it and play as soon as the bytes land.
   private func begin() {
     AudioSession.activate()
+    keeper.start()
+    connectRemote()
     load(current)
     showChrome()
+  }
+
+  /// The Lock Screen's buttons drive the same functions the chrome does.
+  private func connectRemote() {
+    remote.onPlay = { if let player = self.player, player.rate == 0 { togglePlay() } }
+    remote.onPause = { if let player = self.player, player.rate > 0 { togglePlay() } }
+    remote.onToggle = { togglePlay() }
+    remote.onSkip = { skip($0) }
+    remote.onSeek = { seek(to: $0) }
+    remote.onNext = { step(true) }
+    remote.onPrevious = { step(false) }
+    remote.connect()
+  }
+
+  /// What Control Center, the Lock Screen and AirPlay show for the lesson.
+  ///
+  /// Written on every state change rather than on a clock: the system advances
+  /// the clock itself from the rate we report, so a frame per second would only
+  /// pour writes into it.
+  private func updateNowPlaying() {
+    guard player != nil else { return }
+    remote.canStepBack = coordinator.neighbour(of: current, forward: false) != nil
+    remote.canStepForward = coordinator.neighbour(of: current, forward: true) != nil
+    remote.show(
+      NowPlayingInfo(
+        title: current.title,
+        artist: current.role,
+        album: current.quality,
+        duration: duration,
+        position: position,
+        rate: rate,
+        playing: playing
+      ),
+      artwork: artwork
+    )
+  }
+
+  /// The picture Control Center draws, from the site's poster and then from a
+  /// frame of the lesson, which is the only art a library scanned offline has.
+  private func loadArtwork() {
+    let lesson = current
+    artwork = nil
+    Task { @MainActor in
+      var image: UIImage?
+      if let url = lesson.posterURL {
+        image = await RemoteArtStore.shared.image(for: url)
+      }
+      if image == nil {
+        image = await PosterStore.shared.poster(for: lesson.url, width: 600)
+      }
+      guard !Task.isCancelled, current.id == lesson.id else { return }
+      artwork = image
+      updateNowPlaying()
+    }
   }
 
   private func load(_ lesson: Lesson) {
@@ -261,6 +406,11 @@ struct PlayerScreen: View {
     current = lesson
     position = 0
     duration = Double(max(lesson.seconds, 0))
+    zoom = PlayerZoom.minScale
+    zoomOffset = .zero
+    zoomBase = nil
+    zooming = false
+    loadArtwork()
 
     let download = CloudFile.needsDownload(lesson.url)
     waitingForCloud = download
@@ -288,6 +438,7 @@ struct PlayerScreen: View {
     let saved = progress.progress(for: current.progressKey)
     if let saved, WatchProgressMath.shouldResume(position: saved.position, duration: saved.duration) {
       player.seek(to: CMTime(seconds: saved.position, preferredTimescale: 600))
+      position = saved.position
     }
 
     // The scrubber follows the playhead four times a second; the progress store
@@ -325,6 +476,7 @@ struct PlayerScreen: View {
     player.rate = rate
     self.player = player
     playing = true
+    updateNowPlaying()
     showChrome()
   }
 
@@ -344,6 +496,7 @@ struct PlayerScreen: View {
       playing = true
       hideHUD()
     }
+    updateNowPlaying()
   }
 
   private func skip(_ seconds: Double) {
@@ -361,6 +514,7 @@ struct PlayerScreen: View {
       toleranceAfter: .zero
     )
     position = target
+    updateNowPlaying()
   }
 
   private func commit(_ seconds: Double) {
@@ -379,6 +533,7 @@ struct PlayerScreen: View {
     let index = Self.rates.firstIndex(of: rate) ?? 0
     rate = Self.rates[(index + 1) % Self.rates.count]
     if let player, player.rate > 0 { player.rate = rate }
+    updateNowPlaying()
     showChrome()
   }
 
@@ -393,6 +548,7 @@ struct PlayerScreen: View {
       load(next)
     } else {
       playing = false
+      updateNowPlaying()
     }
   }
 
@@ -408,8 +564,11 @@ struct PlayerScreen: View {
     }
     tearDown()
     pictureInPicture.detach()
+    remote.detach()
+    keeper.stop()
     chromeTask?.cancel()
     hudTask?.cancel()
+    hud = nil
     AudioSession.deactivate()
   }
 
@@ -535,7 +694,9 @@ private struct Chrome: View {
   }
 
   /// Floating too: a close button and the name of the lesson at the left, the
-  /// Picture in Picture switch in the top-right corner, with the picture still
+  /// Floating too: a close button and the name of the lesson at the left, then
+  /// the output switch (AirPlay and the phone's own speaker) and the Picture in
+  /// Picture switch in the top-right corner, with the picture still
   /// visible behind them — a full-screen scrim is what made the old chrome read
   /// as a drawer.
   private var header: some View {
@@ -564,6 +725,10 @@ private struct Chrome: View {
       .shadow(color: .black.opacity(0.55), radius: 4, y: 1)
 
       Spacer(minLength: 0)
+
+      RoutePicker()
+        .frame(width: 30, height: 30)
+        .accessibilityLabel("Audio and video output")
 
       if pictureInPicture {
         Button(action: togglePictureInPicture) {

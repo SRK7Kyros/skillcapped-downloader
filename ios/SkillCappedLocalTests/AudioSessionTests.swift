@@ -20,4 +20,15 @@ final class AudioSessionTests: XCTestCase {
     XCTAssertEqual(session.category, .playback, "the ringer switch should not be able to silence a lesson")
     XCTAssertEqual(session.mode, .moviePlayback)
   }
+
+  func testTheSoundMayLeaveThePhone() {
+    XCTAssertTrue(
+      AudioSession.options.contains(.allowAirPlay),
+      "a lesson has to be able to go to an AirPlay screen or speaker"
+    )
+    XCTAssertTrue(
+      AudioSession.options.contains(.allowBluetoothA2DP),
+      "and to Bluetooth headphones in their stereo profile"
+    )
+  }
 }

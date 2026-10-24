@@ -328,7 +328,41 @@ on the phone itself, into the same folders the desktop build writes.
   picture advancing and speaker silent, and the declared `UIBackgroundModes: audio`
   could not help. The category is `.playback` in the `.moviePlayback` mode,
   activated when the player opens and given back with `notifyOthersOnDeactivation`
-  when it closes.
+  when it closes, and it **allows AirPlay and Bluetooth A2DP** (`.allowAirPlay`,
+  `.allowBluetoothA2DP`) so a lesson can go to a TV or a pair of headphones instead
+  of the phone's own speaker. The output is switched from the player's own header,
+  beside Picture in Picture (`Support/RoutePicker.swift`, an `AVRoutePickerView` —
+  the only public route to AirPlay's list, video devices first), which is where
+  every other phone player offers it. **Control Center, the Lock Screen and a
+  headset's buttons see the lesson too** (`Support/RemoteControls.swift`): the
+  now-playing dictionary names the lesson, its role, its quality, its length, the
+  elapsed time and the rate actually in force — a paused picture reports a rate of
+  zero, which stops the system's clock where it is, while `defaultPlaybackRate`
+  keeps the speed the person chose for when it starts again — with the site's
+  poster (or a frame of the file) as its art, the matching `playbackState`, and
+  every transport command wired to the same functions the on-screen chrome calls,
+  the queue steps live only where the queue has a neighbour. Without it the picture
+  was invisible to the system: Control Center went on showing whatever had played
+  before it and its buttons could not reach the lesson.
+- **The phone's orientation is the player's.** Turning rotation lock on with the
+  phone on its side used to send the picture back to portrait, because the lock
+  pins the window to the orientation it was unlocked in whatever the app declares.
+  `Support/PlayerOrientation.swift` answers twice: an `OrientationKeeper` asks the
+  window for the orientation the phone is held in (`requestGeometryUpdate`, which
+  the system honours when it will), and when that is refused the player **turns its
+  own picture** — a quarter circle on its own view, which no setting can prevent —
+  and takes its safe area from the window's other edges
+  (`PlayerOrientation.insets`), so the notch and the home indicator are still
+  cleared. The turn is published 350 ms after the phone moves, so a phone turning
+  with the lock *off* is answered by the window's own rotation instead of by a
+  double turn, and the requests stop after eight refusals because the player's own
+  turn already covers it.
+- **Pinch to zoom.** Two fingers grow the picture up to five times around the point
+  under them (`Support/PlayerZoom.swift`: `offset(starting:from:to:anchor:size:)`
+  holds the anchor's content point still, so a pinch opens the spot the fingers are
+  on rather than the middle of the screen), a zoomed picture **pans** with a drag
+  instead of scrubbing, the offset is clamped so its own edge can never come inside
+  the window and show a band of black, and a pinch back below fit springs to fit.
  Picture in
   picture, AirPlay and hardware decoding are still the platform's own
   (`Support/PictureInPicture.swift` wraps `AVPictureInPictureController` around the
