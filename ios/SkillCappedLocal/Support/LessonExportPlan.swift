@@ -42,4 +42,32 @@ enum LessonExportPlan {
   static func destination(folder: URL, title: String, quality: String?) -> URL {
     folder.appendingPathComponent(fileName(title: title, quality: quality), isDirectory: false)
   }
+
+  // MARK: - A whole course at once
+
+  /// What exporting several lessons means, decided the same way and without
+  /// touching a file.
+  struct Batch: Equatable {
+    /// The lessons whose bytes are on this phone, in the order they were given.
+    let lessons: [Lesson]
+    /// The ones a share sheet cannot take as they lie.
+    let converts: [Lesson]
+
+    /// Nothing here has bytes to move, so the actions have nothing to offer.
+    var isEmpty: Bool { lessons.isEmpty }
+
+    /// Whether the choice has to be put to the person: a course of MP4s already
+    /// opens anywhere, so it goes straight out.
+    var asksFirst: Bool { !converts.isEmpty }
+  }
+
+  /// A course is exported the way one lesson is: what is not on the phone is
+  /// left out, and only the transport streams need repackaging.
+  static func batch(_ lessons: [Lesson]) -> Batch {
+    let here = lessons.filter(isOnThisPhone)
+    return Batch(
+      lessons: here,
+      converts: here.filter { shape(for: $0.url) == .remux }
+    )
+  }
 }

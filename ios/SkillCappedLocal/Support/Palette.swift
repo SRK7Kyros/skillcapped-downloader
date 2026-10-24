@@ -11,6 +11,7 @@ enum Palette {
   static let inkFaint = Color.white.opacity(0.50)
   static let brand = Color(red: 0.13, green: 0.88, blue: 0.42)
   static let warn = Color(red: 0.98, green: 0.72, blue: 0.25)
+  static let danger = Color(red: 0.95, green: 0.32, blue: 0.31)
 
   /// Deterministic cover colours for a lesson whose file cannot yield a frame.
   static func gradient(for seed: String) -> [Color] {

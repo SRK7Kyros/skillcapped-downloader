@@ -75,4 +75,36 @@ final class LessonExportPlanTests: XCTestCase {
     XCTAssertTrue(LessonExportPlan.isOnThisPhone(lesson("here.ts")))
     XCTAssertFalse(LessonExportPlan.isOnThisPhone(lesson("away.mp4", needsDownload: true)))
   }
+
+  // MARK: - A whole course
+
+  func testACourseOfMP4sGoesStraightOut() {
+    let plan = LessonExportPlan.batch([lesson("a.mp4"), lesson("b.mp4")])
+    XCTAssertEqual(plan.lessons.count, 2)
+    XCTAssertTrue(plan.converts.isEmpty)
+    XCTAssertFalse(plan.asksFirst, "an MP4 already opens anywhere, so nothing is asked")
+  }
+
+  func testACourseConvertsOnlyItsTransportStreams() {
+    let plan = LessonExportPlan.batch([lesson("a.ts"), lesson("b.mp4")])
+    XCTAssertEqual(
+      plan.lessons.map(\.url.lastPathComponent),
+      ["a.ts", "b.mp4"],
+      "the sheet keeps the order the course lists them in"
+    )
+    XCTAssertEqual(plan.converts.map(\.url.lastPathComponent), ["a.ts"])
+    XCTAssertTrue(plan.asksFirst)
+  }
+
+  func testACourseWithNothingOnThisPhoneHasNothingToOffer() {
+    let plan = LessonExportPlan.batch([lesson("a.ts", needsDownload: true)])
+    XCTAssertTrue(plan.isEmpty)
+    XCTAssertTrue(plan.converts.isEmpty)
+  }
+
+  func testACourseLeavesOutTheVideosThatAreOnlyInTheCloud() {
+    let plan = LessonExportPlan.batch([lesson("here.mp4"), lesson("away.ts", needsDownload: true)])
+    XCTAssertEqual(plan.lessons.map(\.url.lastPathComponent), ["here.mp4"])
+    XCTAssertTrue(plan.converts.isEmpty, "a video that was dropped cannot force the question")
+  }
 }

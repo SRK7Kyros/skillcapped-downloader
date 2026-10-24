@@ -11,7 +11,7 @@ import SwiftUI
 ///
 /// A lesson row is a file, so it answers to the two things a file can do from
 /// here: leave the phone, or go somewhere else as a file. Both are on the row
-/// itself — a right swipe, or a long press — because the alternative is a
+/// itself — a left swipe, or a long press — because the alternative is a
 /// settings screen nobody finds.
 struct CourseView: View {
   let course: Course
@@ -170,7 +170,7 @@ struct CourseView: View {
     .contentMargins(.bottom, 28, for: .scrollContent)
     .safeAreaInset(edge: .bottom, spacing: 0) {
       if let work = exporter.work {
-        banner(work)
+        ExportBanner(work: work) { exporter.cancel() }
       }
     }
     .confirmationDialog(
@@ -214,7 +214,7 @@ struct CourseView: View {
           .frame(height: 1)
       }
     }
-    .swipeActions(edge: .leading, allowsFullSwipe: false) {
+    .swipeActions(edge: .trailing, allowsFullSwipe: false) {
       actions(for: lesson)
     }
     .contextMenu {
@@ -222,7 +222,7 @@ struct CourseView: View {
     }
   }
 
-  /// The same two things a right swipe offers, so a long press finds them too.
+  /// The same two things a left swipe offers, so a long press finds them too.
   /// A lesson that is still only in iCloud has no file to move or remove.
   @ViewBuilder private func actions(for lesson: Lesson) -> some View {
     if LessonExportPlan.isOnThisPhone(lesson) {
@@ -238,6 +238,7 @@ struct CourseView: View {
       } label: {
         Label("Delete", systemImage: "trash")
       }
+      .tint(Palette.danger)
     }
   }
 
@@ -269,43 +270,6 @@ struct CourseView: View {
       _ = removed.insert(lesson.id)
     }
     store.rescan()
-  }
-
-  // MARK: - The export banner
-
-  /// Where the repackaging says how far along it is, and how to stop it.
-  private func banner(_ work: LessonExport.Work) -> some View {
-    VStack(alignment: .leading, spacing: 6) {
-      HStack(spacing: 8) {
-        Text(work.stage)
-          .font(.caption.weight(.semibold))
-          .foregroundStyle(Palette.ink)
-        Spacer(minLength: 8)
-        Text(work.fraction, format: .percent.precision(.fractionLength(0)))
-          .font(.caption2.monospacedDigit())
-          .foregroundStyle(Palette.inkFaint)
-        Button("Stop") { exporter.cancel() }
-          .font(.caption.weight(.semibold))
-          .foregroundStyle(Palette.brand)
-      }
-
-      Text(work.title)
-        .font(.caption2)
-        .foregroundStyle(Palette.inkFaint)
-        .lineLimit(1)
-
-      ProgressView(value: min(max(work.fraction, 0), 1))
-        .tint(Palette.brand)
-    }
-    .padding(.horizontal, 16)
-    .padding(.vertical, 10)
-    .frame(maxWidth: .infinity, alignment: .leading)
-    .background(Palette.surfaceStrong)
-    .overlay(alignment: .top) {
-      Rectangle()
-        .fill(Palette.line)
-        .frame(height: 1)
-    }
   }
 
   // MARK: - What is asked, and what went wrong
