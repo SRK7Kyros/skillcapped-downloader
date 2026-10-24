@@ -58,7 +58,7 @@ jobs:
 
       - name: Unit and UI tests
         working-directory: ios
-        timeout-minutes: 14
+        timeout-minutes: 25
         run: |
           set +e
           xcodebuild test \

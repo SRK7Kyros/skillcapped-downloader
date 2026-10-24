@@ -445,6 +445,38 @@ enum TSRemux {
     return description
   }
 
+  /// The AAC format an MP4 wants: an ES descriptor wrapped around the stream's
+  /// own `AudioSpecificConfig`.
+  ///
+  /// Handed the bare config the writer still takes the samples and still writes
+  /// the track, but the file's `esds` is then unparseable and every reader
+  /// reports no sound at all — `MP4AudioESDS::Deserialize: the ES_Descriptor tag
+  /// is incorrect` in the device log, an audio track count of zero in a test.
+  private static func esds(wrapping config: Data) -> Data {
+    /// One tag-and-length block, the length in the four-byte form a muxer
+    /// writes, so a reader never has to guess how many bytes it is long.
+    func block(_ tag: UInt8, _ body: [UInt8]) -> [UInt8] {
+      let size = body.count
+      return [
+        tag,
+        0x80 | UInt8((size >> 21) & 0x7f),
+        0x80 | UInt8((size >> 14) & 0x7f),
+        0x80 | UInt8((size >> 7) & 0x7f),
+        UInt8(size & 0x7f),
+      ] + body
+    }
+
+    let decoder = block(0x04, [
+      0x40,        // MPEG-4 audio
+      0x15,        // a stream of its own, its own rate, the reserved bit
+      0, 0, 0,     // a decoder buffer the file need not size
+      0, 0, 0, 0,  // the highest bit rate, unknown
+      0, 0, 0, 0,  // the average bit rate, unknown
+    ] + block(0x05, [UInt8](config)))
+    let stream = block(0x03, [0x00, 0x00, 0x00] + decoder + block(0x06, [0x02]))
+    return Data(stream)
+  }
+
   private static func audioDescription(_ config: TSAudioConfig) throws -> CMFormatDescription {
     var stream = AudioStreamBasicDescription(
       mSampleRate: Float64(config.sampleRate),
@@ -457,7 +489,7 @@ enum TSRemux {
       mBitsPerChannel: 0,
       mReserved: 0
     )
-    let cookie = [UInt8](config.magicCookie)
+    let cookie = [UInt8](esds(wrapping: config.magicCookie))
     var description: CMFormatDescription?
 
     let status = cookie.withUnsafeBufferPointer { bytes in

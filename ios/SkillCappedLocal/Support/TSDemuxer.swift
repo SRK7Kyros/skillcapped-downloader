@@ -26,7 +26,8 @@ struct TSVideoConfig: Equatable {
 }
 
 /// What a stream declares about its audio. `magicCookie` is the
-/// `AudioSpecificConfig` the ADTS headers imply — the cookie an MP4 wants.
+/// `AudioSpecificConfig` the ADTS headers imply — the bytes an MP4 keeps inside
+/// its own ES descriptor, which `TSRemux` wraps around them.
 struct TSAudioConfig: Equatable {
   static let rates = [96000, 88200, 64000, 48000, 44100, 32000, 24000, 22050,
                       16000, 12000, 11025, 8000, 7350]
