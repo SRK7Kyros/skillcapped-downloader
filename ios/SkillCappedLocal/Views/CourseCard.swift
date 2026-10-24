@@ -54,81 +54,18 @@ struct CourseCard: View {
   }
 }
 
+/// The library's flat video rows draw the course page's row, so a lesson looks
+/// the same wherever it is listed — one renderer, one geometry.
 struct LessonRow: View {
   let lesson: Lesson
   var index: Int?
   var progress: Double?
-  /// A narrow column — the right-hand half of a course page on a phone — where a
-  /// full-width still would leave no room for the words.
   var compact = false
 
-  private var stillWidth: CGFloat { compact ? 82 : 104 }
-
   var body: some View {
-    HStack(spacing: compact ? 10 : 12) {
-      ZStack(alignment: .bottomTrailing) {
-        PosterArt(
-          url: lesson.url,
-          seed: lesson.title,
-          remote: lesson.posterURL,
-          width: stillWidth,
-          targetWidth: compact ? 260 : 320,
-          glyphSize: compact ? 15 : 18
-        )
-        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-
-        if let quality = lesson.quality {
-          Text(quality)
-            .font(.system(size: 8, weight: .bold))
-            .foregroundStyle(.white)
-            .padding(.horizontal, 4)
-            .padding(.vertical, 1.5)
-            .background(.black.opacity(0.65), in: RoundedRectangle(cornerRadius: 3))
-            .padding(4)
-        }
-      }
-
-      VStack(alignment: .leading, spacing: 3) {
-        if let index {
-          Text(String(format: "%02d", index))
-            .font(.caption2.weight(.bold))
-            .foregroundStyle(Palette.brand)
-        }
-        Text(lesson.title)
-          .font(compact ? .footnote : .subheadline)
-          .foregroundStyle(Palette.ink)
-          .lineLimit(compact ? 3 : 2)
-          .multilineTextAlignment(.leading)
-        HStack(spacing: 6) {
-          if lesson.seconds > 0 {
-            Text(Format.clock(lesson.seconds))
-          }
-          Text(Format.bytes(lesson.bytes))
-          if lesson.needsDownload {
-            Label("iCloud", systemImage: "icloud.and.arrow.down")
-              .labelStyle(.titleAndIcon)
-              .foregroundStyle(Palette.warn)
-          }
-        }
-        .font(.caption2)
-        .foregroundStyle(Palette.inkFaint)
-
-        if let progress, progress > 0.01 {
-          ProgressView(value: min(progress, 1))
-            .tint(Palette.brand)
-            .frame(maxWidth: compact ? 120 : 140)
-        }
-      }
-
-      Spacer(minLength: 0)
-
-      if !compact {
-        Image(systemName: "play.circle")
-          .font(.title3)
-          .foregroundStyle(Palette.inkDim)
-      }
-    }
-    .padding(.vertical, compact ? 7 : 8)
-    .contentShape(Rectangle())
+    CourseLessonRow(
+      lesson: .here(lesson, index: index, progress: progress),
+      compact: compact
+    )
   }
 }

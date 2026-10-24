@@ -72,81 +72,20 @@ struct CatalogCourseCard: View {
   }
 }
 
-/// One catalogue lesson, remote or already here.
+/// One catalogue row that is not inside a course — a video or a commentary in a
+/// Discover list. It draws the same row the course page draws, so a lesson looks
+/// the same wherever it appears; only its action differs.
 struct CatalogLessonRow: View {
   let item: CatalogItem
-  var index: Int?
   let state: RowState
   let action: () -> Void
 
   var body: some View {
     Button(action: action) {
-      HStack(spacing: 12) {
-        ZStack(alignment: .bottomTrailing) {
-          PosterArt(
-            url: item.thumbURL,
-            seed: item.title,
-            fallback: PosterShape.landscape,
-            window: PosterShape.landscape,
-            width: 104,
-            glyphSize: 18
-          )
-            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-
-          if item.durationSec > 0 {
-            Text(Format.clock(item.durationSec))
-              .font(.system(size: 8, weight: .bold))
-              .foregroundStyle(.white)
-              .padding(.horizontal, 4)
-              .padding(.vertical, 1.5)
-              .background(.black.opacity(0.65), in: RoundedRectangle(cornerRadius: 3))
-              .padding(4)
-          }
-        }
-
-        VStack(alignment: .leading, spacing: 3) {
-          if let index {
-            Text(String(format: "%02d", index))
-              .font(.caption2.weight(.bold))
-              .foregroundStyle(Palette.brand)
-          }
-          Text(item.title)
-            .font(.subheadline)
-            .foregroundStyle(Palette.ink)
-            .lineLimit(2)
-            .multilineTextAlignment(.leading)
-          if let meta = subtitle {
-            Text(meta)
-              .font(.caption2)
-              .foregroundStyle(Palette.inkFaint)
-              .lineLimit(1)
-          }
-        }
-
-        Spacer(minLength: 0)
-
-        HStack(spacing: 5) {
-          Image(systemName: state.glyph)
-            .font(.title3)
-          Text(state.label)
-            .font(.caption2.weight(.semibold))
-        }
-        .foregroundStyle(state.tint)
-      }
-      .padding(.vertical, 8)
-      .contentShape(Rectangle())
+      CourseLessonRow(lesson: .catalogue(item, state: state), compact: false)
     }
     .buttonStyle(.plain)
     .disabled(state.isBusy)
     .accessibilityLabel("\(item.title), \(state.label)")
-  }
-
-  private var subtitle: String? {
-    var parts: [String] = []
-    if let staff = item.staff, !staff.isEmpty { parts.append(staff) }
-    if let champions = item.champions, !champions.isEmpty { parts.append(champions) }
-    if let kda = item.kda, !kda.isEmpty { parts.append(kda) }
-    if !item.category.isEmpty { parts.append(item.category) }
-    return parts.isEmpty ? nil : parts.joined(separator: " · ")
   }
 }

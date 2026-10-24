@@ -67,18 +67,20 @@ struct LibraryScan: Equatable {
 
   var isEmpty: Bool { courses.isEmpty && videos.isEmpty && commentaries.isEmpty }
 
+  /// Every lesson this phone holds, by the catalogue id its file names — what a
+  /// catalogue row looks up to find out whether it has already been downloaded.
+  /// A file the desktop wrote without an id in its name is simply absent, since
+  /// nothing in the catalogue can ask for it.
+  var lessonsByItemId: [String: Lesson] {
+    var byId: [String: Lesson] = [:]
+    for lesson in courses.flatMap(\.lessons) + videos + commentaries {
+      guard let id = lesson.itemId else { continue }
+      byId[id] = lesson
+    }
+    return byId
+  }
+
   /// Every catalogue id the library already holds, so a remote row can say
   /// "on disk" whether the file came from this phone or from the desktop.
-  var onDiskIds: Set<String> {
-    var ids: Set<String> = []
-    for lesson in videos + commentaries {
-      if let id = lesson.itemId { ids.insert(id) }
-    }
-    for course in courses {
-      for lesson in course.lessons {
-        if let id = lesson.itemId { ids.insert(id) }
-      }
-    }
-    return ids
-  }
+  var onDiskIds: Set<String> { Set(lessonsByItemId.keys) }
 }
