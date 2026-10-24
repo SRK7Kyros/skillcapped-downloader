@@ -106,6 +106,8 @@ enum TSRemux {
     var failure: Error?
 
     let demuxer = TSDemuxer()
+    var fedVideo = 0
+    var fedAudio = 0
     demuxer.onSample = { sample in
       guard failure == nil else { return }
       do {
@@ -130,6 +132,7 @@ enum TSRemux {
               duration: CMTime(value: ticks, timescale: CMTimeScale(TSDemuxer.clock)),
               sync: previous.sync
             )
+            fedVideo += 1
           }
           pending = (sample.payload, pts, dts, sample.isSync)
           end = max(end, pts)
@@ -146,10 +149,17 @@ enum TSRemux {
             duration: audioFrame,
             sync: true
           )
+          fedAudio += 1
           end = max(end, pts)
         }
       } catch {
-        failure = error
+        if let named = error as? Failure, case let .writer(reason) = named {
+          failure = Failure.writer(
+            "\(reason) — after \(fedVideo) picture and \(fedAudio) sound samples"
+          )
+        } else {
+          failure = error
+        }
       }
     }
 

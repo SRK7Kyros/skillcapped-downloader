@@ -214,7 +214,7 @@ final class TSDemuxerTests: XCTestCase {
         """
         the repackaging threw \(String(describing: type(of: error))) \
         (\(cocoa.domain) \(cocoa.code)) after \(progress.count) reports, \
-        last \(progress.last ?? -1): \(cocoa.userInfo)
+        last \(progress.last ?? -1): \(cocoa.localizedDescription)
         """
       )
       return
