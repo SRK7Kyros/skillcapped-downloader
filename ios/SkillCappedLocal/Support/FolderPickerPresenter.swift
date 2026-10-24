@@ -38,7 +38,7 @@ final class FolderPickerPresenter: NSObject, UIDocumentPickerDelegate {
     _ picker: UIViewController,
     completion: @escaping (Result<URL, Failure>) -> Void
   ) {
-    guard let host = Self.top() else {
+    guard let host = OnScreen.top() else {
       completion(.failure(.nothingToPresent))
       return
     }
@@ -125,21 +125,5 @@ final class FolderPickerPresenter: NSObject, UIDocumentPickerDelegate {
     let scoped = url.startAccessingSecurityScopedResource()
     defer { if scoped { url.stopAccessingSecurityScopedResource() } }
     return (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true
-  }
-
-  /// The controller actually on screen, so the picker rides above the sheet
-  /// rather than under it.
-  private static func top() -> UIViewController? {
-    let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
-    let scene = scenes.first { $0.activationState == .foregroundActive } ?? scenes.first
-    guard
-      var top = scene?.windows.first(where: \.isKeyWindow)?.rootViewController
-        ?? scene?.windows.first?.rootViewController
-    else { return nil }
-
-    while let presented = top.presentedViewController, !presented.isBeingDismissed {
-      top = presented
-    }
-    return top
   }
 }

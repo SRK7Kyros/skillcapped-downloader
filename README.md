@@ -205,6 +205,31 @@ on the phone itself, into the same folders the desktop build writes.
   course is already on this phone and *Download* when none is. The hero itself is
   `Views/CourseHero.swift` (`CourseHero` + `CoursePill`), which is what keeps the
   two screens from drifting apart.
+- **A lesson row is a file, and says so.** A right swipe on a lesson — or a long
+  press — offers the two things a file can do from that page: **Export** and
+  **Delete**. Both are on the row itself because the alternative is a settings
+  screen nobody finds, and both come from the platform (`List`'s
+  `.swipeActions(edge: .leading)` plus `.contextMenu`), so the reveal, the haptics
+  and the VoiceOver actions are iOS's own rather than a hand-rolled gesture that
+  would fight the row's tap. An `.mp4` (a desktop download) goes straight to the
+  share sheet as it lies; a `.ts` asks first, because one answer costs a copy of
+  the lesson: *Share the file as it is*, or *Convert to MP4 and share*. The
+  conversion is `Support/TSRemux.swift` — a repackaging, not an encode: the H.264
+  and AAC bytes are what an MP4 already carries, so only the container changes.
+  It reads its samples from `Support/TSDemuxer.swift` (PAT/PMT to find the two
+  elementary streams, the PES headers for the stamps, Annex-B rewritten to AVCC
+  with the parameter sets lifted into the format description, the ADTS headers
+  peeled off the sound), feeds them to `AVAssetWriter` with no re-encode, and
+  removes the half-written MP4 if it fails or is stopped. A lesson that is still
+  only in iCloud is a shadow file, so the row offers neither action — there is no
+  byte to move and no sheet that could say "fetching it first". Delete asks once
+  (`Delete this video?`, naming the space it frees), forgets the queue entry and
+  the playback position with the file, and rescans; the row leaves the screen at
+  once because the course on screen is the value from the last scan.
+  `LessonExportPlanTests` pins the shape/name decisions, `TSDemuxerTests` reads
+  the fixture end to end (45 video frames, 66 AAC frames, a 480×270 High SPS) and
+  remuxes it into an MP4 with both tracks, and `LessonActionsUITests` drives both
+  gestures without accepting either action.
 - **Downloading.** `SegmentDownloader` fetches the HLS parts four at a time under
   one shared polite budget and merges them into one MPEG-TS file, which is what
   lands in the library — nothing is re-encoded, because iOS cannot demux a
