@@ -364,9 +364,9 @@ on the phone itself, into the same folders the desktop build writes.
   instead of scrubbing, the offset is clamped so its own edge can never come inside
   the window and show a band of black, and a pinch back below fit springs to fit.
  Picture in
-  picture, AirPlay and hardware decoding are still the platform's own
+  picture, the route list itself and hardware decoding are still the platform's own
   (`Support/PictureInPicture.swift` wraps `AVPictureInPictureController` around the
-  layer). The maths behind every gesture lives in `Support/PlayerGestures.swift`
+  layer, `Support/RoutePicker.swift` the output button). The maths behind every gesture lives in `Support/PlayerGestures.swift`
   (`PlayerMath`, `SkipBurst`) so it is pinned by a test rather than by eye.
   `AVPlayerViewController` was used until 1.4.0 and could not carry any of it: its
   chrome cannot be extended, so a lesson could not offer what a phone player offers.

@@ -22,8 +22,8 @@ struct NowPlayingInfo {
       MPMediaItemPropertyTitle: title,
       MPMediaItemPropertyArtist: artist,
       MPNowPlayingInfoPropertyMediaType: Int(MPNowPlayingInfoMediaType.video.rawValue),
-      MPNowPlayingInfoPropertyElapsedPlaybackTime: position.isFinite ? max(position, 0) : 0,
-      MPNowPlayingInfoPropertyPlaybackRate: playing ? Double(rate) : 0,
+      MPNowPlayingInfoPropertyElapsedPlaybackTime: position.isFinite ? max(position, 0) : 0.0,
+      MPNowPlayingInfoPropertyPlaybackRate: playing ? Double(rate) : 0.0,
       MPNowPlayingInfoPropertyDefaultPlaybackRate: Double(rate),
     ]
     if let album, !album.isEmpty {
@@ -158,7 +158,7 @@ final class RemoteControls {
 
   /// A handler runs on whatever thread the system picked; the player's state is
   /// main-actor, so the work hops there and the command answers at once.
-  private static func forward(
+  private nonisolated static func forward(
     from remote: RemoteControls?,
     _ action: @escaping @MainActor (RemoteControls) -> Void
   ) -> MPRemoteCommandHandlerStatus {
@@ -167,7 +167,7 @@ final class RemoteControls {
     return .success
   }
 
-  private static func forward(
+  private nonisolated static func forward(
     _ path: KeyPath<RemoteControls, (() -> Void)?>,
     from remote: RemoteControls?
   ) -> MPRemoteCommandHandlerStatus {

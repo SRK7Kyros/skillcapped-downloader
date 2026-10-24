@@ -30,7 +30,8 @@ final class NowPlayingInfoTests: XCTestCase {
     XCTAssertEqual(dictionary[MPNowPlayingInfoPropertyElapsedPlaybackTime] as? Double, 90)
     XCTAssertEqual(
       dictionary[MPNowPlayingInfoPropertyMediaType] as? Int,
-      MPNowPlayingInfoMediaType.video.rawValue
+      Int(MPNowPlayingInfoMediaType.video.rawValue),
+      "the system lists it as video, which is what gives it a picture surface"
     )
   }
 

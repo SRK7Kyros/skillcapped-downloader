@@ -634,6 +634,7 @@ struct PlayerScreen: View {
 /// cannot, so the rate and the two queue steps float above the bar as their own
 /// buttons, and the bar keeps the three controls a thumb reaches for plus a
 /// timeline wide enough for both readouts (`PlayerChromeLayout`).
+@MainActor
 private struct Chrome: View {
   let lesson: Lesson
   let playing: Bool
