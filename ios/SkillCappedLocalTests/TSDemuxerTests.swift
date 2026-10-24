@@ -201,11 +201,24 @@ final class TSDemuxerTests: XCTestCase {
     defer { try? FileManager.default.removeItem(at: destination) }
 
     var progress: [Double] = []
-    let seconds = try TSRemux.toMP4(
-      source: try fixture(),
-      destination: destination,
-      progress: { progress.append($0) }
-    )
+    let seconds: Double
+    do {
+      seconds = try TSRemux.toMP4(
+        source: try fixture(),
+        destination: destination,
+        progress: { progress.append($0) }
+      )
+    } catch {
+      let cocoa = error as NSError
+      XCTFail(
+        """
+        the repackaging threw \(String(describing: type(of: error))) \
+        (\(cocoa.domain) \(cocoa.code)) after \(progress.count) reports, \
+        last \(progress.last ?? -1): \(cocoa.userInfo)
+        """
+      )
+      return
+    }
 
     XCTAssertEqual(progress.last, 1, "the progress should finish where the banner says it does")
     XCTAssertTrue((2...4).contains(seconds), "the fixture is about three seconds, not \(seconds)")
@@ -214,13 +227,17 @@ final class TSDemuxerTests: XCTestCase {
     XCTAssertGreaterThan(size ?? 0, 4_096, "an MP4 of three seconds is more than its headers")
 
     let asset = AVURLAsset(url: destination)
-    let video = try await asset.loadTracks(withMediaType: .video)
-    let audio = try await asset.loadTracks(withMediaType: .audio)
-    XCTAssertEqual(video.count, 1, "the picture should survive the repackaging")
-    XCTAssertEqual(audio.count, 1, "and so should the sound")
+    do {
+      let video = try await asset.loadTracks(withMediaType: .video)
+      let audio = try await asset.loadTracks(withMediaType: .audio)
+      XCTAssertEqual(video.count, 1, "the picture should survive the repackaging")
+      XCTAssertEqual(audio.count, 1, "and so should the sound")
 
-    let duration = try await asset.load(.duration).seconds
-    XCTAssertTrue((2...4).contains(duration), "the MP4 runs about three seconds, not \(duration)")
+      let duration = try await asset.load(.duration).seconds
+      XCTAssertTrue((2...4).contains(duration), "the MP4 runs about three seconds, not \(duration)")
+    } catch {
+      XCTFail("the written MP4 could not be read back: \(error)")
+    }
   }
 
   /// Stopping leaves nothing behind: a half-written MP4 is worse than no file, and

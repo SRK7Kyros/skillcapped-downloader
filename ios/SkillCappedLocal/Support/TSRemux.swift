@@ -68,7 +68,6 @@ enum TSRemux {
     } catch {
       throw Failure.writer("the file could not be started: \(error.localizedDescription)")
     }
-    writer.shouldOptimizeForNetworkUse = true
 
     let video = AVAssetWriterInput(
       mediaType: .video,
