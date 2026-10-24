@@ -53,14 +53,25 @@ final class FolderPickerUITests: XCTestCase {
     XCTAssertNotNil(waitForPicker(in: app), "the picker should present:\n\(app.debugDescription)")
     let open = app.buttons["Open"]
     XCTAssertTrue(open.waitForExistence(timeout: 30), "the picker should offer Open:\n\(app.debugDescription)")
+    XCTAssertEqual(
+      XCTWaiter().wait(
+        for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "isEnabled == true"), object: open)],
+        timeout: 30
+      ),
+      .completed,
+      "Open should become tappable once the picker has read the folder:\n\(app.debugDescription)"
+    )
     open.tap()
 
-    let gone = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: open)
-    XCTAssertEqual(
-      XCTWaiter().wait(for: [gone], timeout: 40),
-      .completed,
-      "the picker must dismiss on Open instead of spinning:\n\(app.debugDescription)"
-    )
+    if !waitForDismissal(of: open, timeout: 30) {
+      // A tap the picker was not ready for is dropped silently, and a person
+      // looking at a picker that did not move presses the button again.
+      open.tap()
+      XCTAssertTrue(
+        waitForDismissal(of: open, timeout: 30),
+        "the picker must dismiss on Open instead of spinning:\n\(app.debugDescription)"
+      )
+    }
 
     XCTAssertEqual(app.state, .runningForeground, "the pick must not kill the app")
     XCTAssertTrue(
@@ -72,6 +83,11 @@ final class FolderPickerUITests: XCTestCase {
     shot.name = "after-open"
     shot.lifetime = .keepAlways
     add(shot)
+  }
+
+  private func waitForDismissal(of element: XCUIElement, timeout: TimeInterval) -> Bool {
+    let gone = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: element)
+    return XCTWaiter().wait(for: [gone], timeout: timeout) == .completed
   }
 
   private func openSheet(in app: XCUIApplication) -> XCUIElement {

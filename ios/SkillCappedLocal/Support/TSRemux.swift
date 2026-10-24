@@ -62,7 +62,12 @@ enum TSRemux {
     )
 
     try? FileManager.default.removeItem(at: destination)
-    let writer = try AVAssetWriter(outputURL: destination, fileType: .mp4)
+    let writer: AVAssetWriter
+    do {
+      writer = try AVAssetWriter(outputURL: destination, fileType: .mp4)
+    } catch {
+      throw Failure.writer("the file could not be started: \(error.localizedDescription)")
+    }
     writer.shouldOptimizeForNetworkUse = true
 
     let video = AVAssetWriterInput(
@@ -71,7 +76,6 @@ enum TSRemux {
       sourceFormatHint: videoFormat
     )
     video.expectsMediaDataInRealTime = false
-    video.mediaTimeScale = CMTimeScale(TSDemuxer.clock)
     guard writer.canAdd(video) else { throw Failure.writer("the video track was refused") }
     writer.add(video)
 
@@ -217,12 +221,20 @@ enum TSRemux {
     duration: CMTime,
     sync: Bool
   ) throws {
-    // A writer that never asks for more has stopped taking data; failing beats
-    // waiting for it forever.
-    let deadline = Date().addingTimeInterval(60)
+    // A writer that has failed never asks for more data, so the wait has to end
+    // and the reason has to carry what the writer said rather than a shrug.
+    var waited = 0.0
     while !input.isReadyForMoreMediaData {
-      guard Date() < deadline else { throw Failure.writer("a track stopped accepting data") }
+      if let reason = writer.error {
+        throw Failure.writer("the \(input.mediaType.rawValue) track was refused: \(reason.localizedDescription)")
+      }
+      guard waited < 5 else {
+        throw Failure.writer(
+          "the \(input.mediaType.rawValue) track stopped accepting data (writer status \(writer.status.rawValue))"
+        )
+      }
       Thread.sleep(forTimeInterval: 0.004)
+      waited += 0.004
     }
 
     let buffer = try sampleBuffer(
