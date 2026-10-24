@@ -118,6 +118,7 @@ enum TSRemux {
             lastTicks = ticks
             try feed(
               video,
+              into: writer,
               payload: previous.payload,
               format: videoFormat,
               pts: previous.pts,
@@ -133,6 +134,7 @@ enum TSRemux {
           guard let audio, let audioFormat else { return }
           try feed(
             audio,
+            into: writer,
             payload: sample.payload,
             format: audioFormat,
             pts: pts,
@@ -170,6 +172,7 @@ enum TSRemux {
       if let previous = pending {
         try feed(
           video,
+          into: writer,
           payload: previous.payload,
           format: videoFormat,
           pts: previous.pts,
@@ -205,6 +208,7 @@ enum TSRemux {
 
   private static func feed(
     _ input: AVAssetWriterInput,
+    into writer: AVAssetWriter,
     payload: Data,
     format: CMFormatDescription,
     pts: Int64,
@@ -229,7 +233,7 @@ enum TSRemux {
       sync: sync
     )
     guard input.append(buffer) else {
-      throw Failure.writer(input.error?.localizedDescription ?? "a sample was refused")
+      throw Failure.writer(writer.error?.localizedDescription ?? "a sample was refused")
     }
   }
 
