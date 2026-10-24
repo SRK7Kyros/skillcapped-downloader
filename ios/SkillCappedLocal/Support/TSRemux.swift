@@ -202,6 +202,7 @@ enum TSRemux {
       }
 
       try interleaver.finish()
+      try interleaver.check()
     } catch {
       writer.cancelWriting()
       try? FileManager.default.removeItem(at: destination)
@@ -353,6 +354,15 @@ enum TSRemux {
     /// Hands over everything still queued, waiting for the writer to want it.
     func finish() throws {
       try pump(until: { isEmpty }, abandoning: false)
+    }
+
+    /// A track the writer took no samples for is left out of the file, so an
+    /// export can come back with its sound simply gone and no error anywhere.
+    func check() throws {
+      for track in tracks where track.fed == 0 {
+        let kind = track.input.mediaType == .video ? "picture" : "sound"
+        throw Failure.writer("the \(kind) track was given no samples (\(tally))")
+      }
     }
 
     /// Empties both queues as the writer asks. With `abandoning`, a writer that

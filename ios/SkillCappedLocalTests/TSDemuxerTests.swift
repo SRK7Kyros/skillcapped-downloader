@@ -267,6 +267,8 @@ final class TSDemuxerTests: XCTestCase {
 
     let reports = Reports()
     let source = try fixture()
+    let produced = try read(source)
+    let demuxed = "the file demuxes to \(produced.video.count) picture and \(produced.audio.count) sound samples"
     let outcome = offMain { () -> Outcome in
       do {
         return .done(
@@ -310,8 +312,8 @@ final class TSDemuxerTests: XCTestCase {
     do {
       let video = try await asset.loadTracks(withMediaType: .video)
       let audio = try await asset.loadTracks(withMediaType: .audio)
-      XCTAssertEqual(video.count, 1, "the picture should survive the repackaging")
-      XCTAssertEqual(audio.count, 1, "and so should the sound")
+      XCTAssertEqual(video.count, 1, "the picture should survive the repackaging — \(demuxed)")
+      XCTAssertEqual(audio.count, 1, "and so should the sound — \(demuxed)")
 
       let duration = try await asset.load(.duration).seconds
       XCTAssertTrue((2...4).contains(duration), "the MP4 runs about three seconds, not \(duration)")
