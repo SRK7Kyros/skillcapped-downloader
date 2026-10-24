@@ -211,13 +211,14 @@ on the phone itself, into the same folders the desktop build writes.
   course is already on this phone and *Download* when none is. The hero itself is
   `Views/CourseHero.swift` (`CourseHero` + `CoursePill`), which is what keeps the
   two screens from drifting apart.
-- **A lesson row is a file, and says so.** A right swipe on a lesson — or a long
+- **A lesson row is a file, and says so.** A left swipe on a lesson — or a long
   press — offers the two things a file can do from that page: **Export** and
   **Delete**. Both are on the row itself because the alternative is a settings
   screen nobody finds, and both come from the platform (`List`'s
-  `.swipeActions(edge: .leading)` plus `.contextMenu`), so the reveal, the haptics
+  `.swipeActions(edge: .trailing)` plus `.contextMenu`), so the reveal, the haptics
   and the VoiceOver actions are iOS's own rather than a hand-rolled gesture that
-  would fight the row's tap. An `.mp4` (a desktop download) goes straight to the
+  would fight the row's tap. *Delete* is drawn in the palette's own red: a
+  destructive button otherwise keeps the app's global brand tint. An `.mp4` (a desktop download) goes straight to the
   share sheet as it lies; a `.ts` asks first, because one answer costs a copy of
   the lesson: *Share the file as it is*, or *Convert to MP4 and share*. The
   conversion is `Support/TSRemux.swift` — a repackaging, not an encode: the H.264
@@ -243,6 +244,18 @@ on the phone itself, into the same folders the desktop build writes.
   the fixture end to end (45 video frames, 66 AAC frames, a 480×270 High SPS) and
   remuxes it into an MP4 with both tracks, and `LessonActionsUITests` drives both
   gestures without accepting either action.
+- **A course is a folder, so its long press speaks for all of it.** Holding a
+  course card offers `Export all N videos` and `Delete all N videos`, N being the
+  videos actually on this phone — a lesson only in iCloud is a shadow file and is
+  left out of both, so the confirm quotes only the bytes that leave. Exporting a
+  course raises **one** sheet with every file in it: the MP4s hand over as they
+  lie and only the transport streams are repackaged, one after another, under one
+  banner that counts them (`Repackaging 2 of 7`) and can be stopped. The
+  *convert or share as-is?* question is asked only when the batch holds a `.ts`,
+  because only that answer costs a copy — `LessonExportPlan.batch` decides it with
+  no file touched, so the rule is unit-tested. Deleting takes each file with its
+  queue row and resume point, reports a per-file failure rather than claiming
+  success, and drops the card only once nothing of the course is left.
 - **Downloading.** `SegmentDownloader` fetches the HLS parts four at a time under
   one shared polite budget and merges them into one MPEG-TS file, which is what
   lands in the library — nothing is re-encoded, because iOS cannot demux a
