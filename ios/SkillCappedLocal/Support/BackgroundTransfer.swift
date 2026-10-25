@@ -48,8 +48,18 @@ final class BackgroundTransfer: NSObject, URLSessionDownloadDelegate, @unchecked
   /// up again.
   var onUnattendedPart: (@Sendable () -> Void)?
 
+  /// Called on the delegate's thread the moment the last transfer in flight has
+  /// settled. The next batch is handed over from a job that has not run yet, and
+  /// iOS has nothing left to wake the app for until it does — so whatever is
+  /// listening has to keep the process alive right now, not a hop later.
+  var onWentIdle: (@Sendable () -> Void)?
+
   private let lock = NSLock()
   private var waiters: [Int: CheckedContinuation<Int64, Error>] = [:]
+  /// Every task this process started and has not settled yet. A task the *system*
+  /// carried on from a previous launch was never registered here, and answers
+  /// through `onUnattendedPart` instead.
+  private var inFlight: Set<Int> = []
   private var eventsCompletion: (() -> Void)?
 
   private lazy var session: URLSession = {
@@ -94,6 +104,7 @@ final class BackgroundTransfer: NSObject, URLSessionDownloadDelegate, @unchecked
         task.taskDescription = part.encoded
         lock.lock()
         waiters[task.taskIdentifier] = continuation
+        inFlight.insert(task.taskIdentifier)
         lock.unlock()
         handle.attach(task)
         // Resumed before it is cancelled: a task cancelled while still suspended
@@ -193,7 +204,13 @@ final class BackgroundTransfer: NSObject, URLSessionDownloadDelegate, @unchecked
   private func settle(_ identifier: Int, with outcome: Result<Int64, Error>) {
     lock.lock()
     let waiter = waiters.removeValue(forKey: identifier)
+    let started = inFlight.remove(identifier) != nil
+    let idle = inFlight.isEmpty
     lock.unlock()
+
+    // Announced before the waiter is resumed: the lease this takes is queued ahead
+    // of the work that needs it, which is the whole point of saying it now.
+    if started, idle { onWentIdle?() }
 
     guard let waiter else {
       // Nobody is waiting: the app was relaunched just to take delivery, and the

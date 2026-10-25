@@ -14,6 +14,9 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
     BackgroundTransfer.shared.onUnattendedPart = {
       Task { @MainActor in DownloadManager.shared.wake() }
     }
+    BackgroundTransfer.shared.onWentIdle = {
+      Task { @MainActor in DownloadManager.shared.transferWentIdle() }
+    }
     return true
   }
 

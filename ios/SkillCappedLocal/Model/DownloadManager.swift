@@ -10,6 +10,15 @@ enum DownloadState: String, Codable {
   case cancelled
 }
 
+/// Whether a batch that has just landed needs the app kept awake to hand the next
+/// one over. Only a lesson still waiting on parts is worth a lease — a queue that
+/// is paused, failed or finished has nothing left to start.
+enum TransferHandover {
+  static func keepsWorking(_ states: [DownloadState]) -> Bool {
+    states.contains { $0 == .queued || $0 == .downloading }
+  }
+}
+
 /// One lesson in the queue, persisted so a download survives a relaunch.
 struct DownloadTask: Codable, Identifiable, Hashable {
   let uuid: String
@@ -67,6 +76,9 @@ final class DownloadManager: ObservableObject {
 
   @Published private(set) var tasks: [DownloadTask] = []
   @Published private(set) var bytesPerSecond: Double = 0
+  /// Why the lock-screen card is missing, when it is: the queue is the one place
+  /// this can be read without a developer machine.
+  @Published private(set) var activityTrouble: String?
 
   /// Called after the library on disk changed, so the sources can rescan.
   var onChange: (@MainActor () -> Void)?
@@ -204,6 +216,8 @@ final class DownloadManager: ObservableObject {
       running = nil
       lease?.end()
       lease = nil
+      startLease?.end()
+      startLease = nil
     }
     BackgroundTransfer.shared.cancelLesson(uuid)
     guard let index = tasks.firstIndex(where: { $0.uuid == uuid }) else { return }
@@ -230,6 +244,8 @@ final class DownloadManager: ObservableObject {
       running = nil
       lease?.end()
       lease = nil
+      startLease?.end()
+      startLease = nil
     }
     BackgroundTransfer.shared.cancelLesson(uuid)
     tasks.removeAll { $0.uuid == uuid }
@@ -400,6 +416,18 @@ final class DownloadManager: ObservableObject {
     } else {
       activity.finish()
     }
+    activityTrouble = activity.trouble
+  }
+
+  /// A part landed and nothing else is in the air. The next batch is handed over
+  /// from a job that has not run yet, and with no transfer left in flight the
+  /// system has nothing to wake the app for — so a course left alone would sit
+  /// half-downloaded until the app was opened by hand. The same lease the wake
+  /// takes covers that gap; the next part's progress ends it.
+  func transferWentIdle() {
+    guard runner != nil else { return }
+    guard TransferHandover.keepsWorking(tasks.map(\.state)) else { return }
+    startLease = startLease ?? BackgroundLease("hand-over")
   }
 
   private func apply(_ progress: DownloadProgress, to uuid: String) {

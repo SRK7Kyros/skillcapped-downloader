@@ -56,8 +56,14 @@ struct DownloadsView: View {
         } header: {
           Text("Queue")
         } footer: {
-          if let active = downloads.queue.first, active.state == .downloading, downloads.bytesPerSecond > 0 {
-            Text("\(Format.bytes(Int64(downloads.bytesPerSecond)))/s")
+          VStack(alignment: .leading, spacing: 4) {
+            if let active = downloads.queue.first, active.state == .downloading, downloads.bytesPerSecond > 0 {
+              Text("\(Format.bytes(Int64(downloads.bytesPerSecond)))/s")
+            }
+            if let trouble = downloads.activityTrouble {
+              Text(trouble)
+                .foregroundStyle(Palette.warn)
+            }
           }
         }
       }
