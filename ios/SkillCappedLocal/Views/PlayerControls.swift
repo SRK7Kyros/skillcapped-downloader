@@ -139,8 +139,8 @@ struct PlayerQueueDrawer: View {
     .frame(width: width)
     .glass(
       RoundedRectangle(cornerRadius: 26, style: .continuous),
-      tint: 0.68,
-      rim: 0.72,
+      tint: 0.80,
+      rim: 0.58,
       rimWidth: 1.2,
       lift: 0.5
     )
@@ -280,6 +280,6 @@ struct PlayerHUDView: View {
     .foregroundStyle(.white)
     .padding(.horizontal, 18)
     .padding(.vertical, 13)
-    .glass(RoundedRectangle(cornerRadius: 20, style: .continuous), tint: 0.68, rim: 0.62)
+    .glass(RoundedRectangle(cornerRadius: 20, style: .continuous), tint: 0.80, rim: 0.54)
   }
 }

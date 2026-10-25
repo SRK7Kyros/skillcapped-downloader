@@ -15,7 +15,7 @@ enum VideoFit: String, Codable, CaseIterable {
   case fill
 
   /// What the layer draws with.
-  var gravity: AVVideoGravity {
+  var gravity: AVLayerVideoGravity {
     switch self {
     case .fit: return .resizeAspect
     case .fill: return .resizeAspectFill

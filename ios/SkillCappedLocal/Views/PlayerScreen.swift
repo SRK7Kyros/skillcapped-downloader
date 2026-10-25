@@ -847,7 +847,7 @@ private struct Chrome: View {
           .font(.system(size: 13, weight: .bold))
           .foregroundStyle(.white)
           .frame(width: 32, height: 32)
-          .glass(Circle(), tint: 0.58, rim: 0.70)
+          .glass(Circle(), tint: 0.70, rim: 0.60)
       }
       .buttonStyle(.plain)
       .accessibilityLabel("Close")
@@ -872,7 +872,7 @@ private struct Chrome: View {
           .font(.system(size: 12, weight: .bold))
           .foregroundStyle(.white)
           .frame(width: 32, height: 32)
-          .glass(Circle(), tint: 0.58, rim: 0.70)
+          .glass(Circle(), tint: 0.70, rim: 0.60)
       }
       .buttonStyle(.plain)
       .accessibilityLabel(fit.actionLabel)
@@ -880,7 +880,7 @@ private struct Chrome: View {
 
       RoutePicker(diameter: 32)
         .frame(width: 32, height: 32)
-        .glass(Circle(), tint: 0.58, rim: 0.70)
+        .glass(Circle(), tint: 0.70, rim: 0.60)
         .accessibilityLabel("Audio and video output")
 
       if pictureInPicture {
@@ -889,7 +889,7 @@ private struct Chrome: View {
             .font(.system(size: 13, weight: .bold))
             .foregroundStyle(.white)
             .frame(width: 32, height: 32)
-            .glass(Circle(), tint: 0.58, rim: 0.70)
+            .glass(Circle(), tint: 0.70, rim: 0.60)
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Picture in picture")
@@ -921,7 +921,7 @@ private struct Chrome: View {
   private func floatingButton<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
     content()
       .frame(width: 44, height: 44)
-      .glass(Circle(), tint: 0.58, rim: 0.70)
+      .glass(Circle(), tint: 0.70, rim: 0.60)
   }
 
   /// One row: every control at the same height, and the timeline the only thing
@@ -947,7 +947,7 @@ private struct Chrome: View {
     }
     .padding(.horizontal, 14)
     .padding(.vertical, 6)
-    .glass(Capsule(), tint: 0.64, rim: 0.72, rimWidth: 1.2, lift: 0.44)
+    .glass(Capsule(), tint: 0.76, rim: 0.58, rimWidth: 1.2, lift: 0.5)
   }
 
   /// The list the lesson was opened from, as a drawer above the button rather
