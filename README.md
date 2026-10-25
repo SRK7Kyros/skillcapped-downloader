@@ -571,8 +571,10 @@ on the phone itself, into the same folders the desktop build writes.
   cannot prove safe — the shared shell `RootView`, the palette, the demo fixtures,
   an unrecognised view, `project.yml` — runs the whole suite, and so does a commit
   that bumps `MARKETING_VERSION`, which makes a version bump the "we're happy,
-  check everything" run. `[ui-all]` / `[ui-none]` in a commit message overrule it,
-  a manual dispatch defaults to `all`, and `--self-test` proves the table in a
+  check everything" run. `[ui-all]` / `[ui-none]` in a commit **subject** overrule
+  it — the subject only, because a body that merely explains the tokens used to
+  fire them — a manual dispatch defaults to `all`, and `--self-test` proves the
+  table in a
   second (CI runs it before every suite, so a broken pattern cannot quietly stop
   a test from running).
 
