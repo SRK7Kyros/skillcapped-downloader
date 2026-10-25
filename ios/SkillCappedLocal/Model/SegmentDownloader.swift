@@ -61,11 +61,19 @@ actor SegmentDownloader {
   static let shared = SegmentDownloader()
 
   static let cdnOrigin = "https://d13z5uuzt1wkbz.cloudfront.net"
-  static let segmentConcurrency = 4
-  /// How many parts one hand-over puts in the system's queue. Wide enough that a
-  /// normal lesson leaves in a single turn — the point of the change — and bounded
-  /// because the session carries the list until it drains.
-  static let partWindow = 64
+  /// Connections the whole session may hold open. The CDN answers one part
+  /// (2.7 MB) in ~1 s and 16 at once at 38 MB/s, so more is not the problem — the
+  /// scheduler is.
+  static let segmentConcurrency = 6
+  /// Parts handed to the session at once. **Deliberately narrow**, and it was 64
+  /// for one build: with the whole lesson queued, the app goes idle a second after
+  /// the hand-over, and iOS then runs the list as system-scheduled background work
+  /// — measured on a device as one part at a time, several times slower than the
+  /// burst-per-window this replaces. A window this size keeps the app being woken
+  /// every few parts (a settle is a wake), which is what keeps the transfers fast,
+  /// while still leaving the session non-empty: the next part is handed over in the
+  /// same wake that reported the settle.
+  static let partWindow = 8
   static let maxSegments = 20_000
 
   private var qualityCache: [String: [String]] = [:]
@@ -234,14 +242,21 @@ actor SegmentDownloader {
   /// Segments already on disk from an interrupted run are kept, so a retry only
   /// fetches what is missing.
   ///
-  /// The parts go to the background session **before the first suspension**, and
-  /// only then does this wait for any of them. That ordering is the design: a
-  /// lesson enqueued four parts at a time needed the app to be woken to enqueue
-  /// the next four, and iOS owes an app no such wake-up — the system only promises
-  /// a relaunch once *all* of a session's transfers are done — so a suspended app
-  /// was left with an empty queue and nothing to wake it. A normal lesson now goes
-  /// over in one turn; a very long one is handed over in windows, topped up as
-  /// each part settles, which is a moment the app is awake for anyway.
+  /// Parts go to the background session a window at a time, and each settle refills
+  /// that window from inside the same wake.
+  ///
+  /// Both extremes were measured on a device. Enqueueing four parts only left a
+  /// suspended app with an empty queue and nothing to wake it — the system promises
+  /// a relaunch only once *all* of a session's transfers are done — so the queue
+  /// stalled between batches. Enqueueing the whole lesson fixed the stall and cost
+  /// the throughput: with nothing left to wake the app for, it went idle a second
+  /// after the hand-over and iOS ran the list as background work, one part at a
+  /// time. A window the settle itself refills keeps both properties — the session
+  /// is never empty while parts remain, and the app is awake every few parts, which
+  /// is what keeps the transfers running at full speed.
+  ///
+  /// Parts are awaited in completion order, not index order, so one slow or retried
+  /// part cannot hold the rest of the progress back.
   private func fetchParts(
     uuid: String,
     qualityId: Int,
@@ -268,40 +283,55 @@ actor SegmentDownloader {
     }
 
     var next = 0
-    var outstanding: [(index: Int, task: Int)] = []
+    var inFlight = 0
+    var announced = false
+    var settles: [Int] = []
+    let lessonStart = Date()
 
-    func handOver() throws {
-      while outstanding.count < Self.partWindow, next < missing.count {
-        let index = missing[next]
-        next += 1
+    try await withThrowingTaskGroup(of: (index: Int, size: Int64, ms: Int).self) { group in
+      while true {
+        while inFlight < Self.partWindow, next < missing.count {
+          let index = missing[next]
+          next += 1
+          try Task.checkCancellation()
+          guard let url = Self.segmentURL(uuid: uuid, qualityId: qualityId, index: index) else {
+            throw DownloadError.segment(index: index, status: 0)
+          }
+          let part = BackgroundSegment(uuid: uuid, jobFolder: jobDir, index: index)
+          guard let task = BackgroundTransfer.shared.start(url, part: part) else {
+            throw DownloadError.cancelled
+          }
+          inFlight += 1
+          group.addTask {
+            let started = Date()
+            let size = try await self.partSize(
+              (index: index, task: task), uuid: uuid, qualityId: qualityId, jobDir: jobDir
+            )
+            return (index, size, Int(Date().timeIntervalSince(started) * 1000))
+          }
+          guard !announced else { continue }
+          announced = true
+          BackgroundJournal.shared.record("handed over \(inFlight) of \(missing.count) missing parts")
+          // Said after the hand-over, never before it: this event releases the
+          // queue's start lease, and a lease released while the lesson was still
+          // being handed over is exactly when the app could be suspended mid-turn.
+          onProgress(DownloadProgress(phase: .downloading, segmentsDone: done, segmentsTotal: total, bytes: bytes))
+        }
+
+        guard let settled = try await group.next() else { break }
+        inFlight -= 1
+        done += 1
+        bytes += settled.size
+        if settles.count < 6 { settles.append(settled.ms) }
+        onProgress(DownloadProgress(phase: .downloading, segmentsDone: done, segmentsTotal: total, bytes: bytes))
         try Task.checkCancellation()
-        guard let url = Self.segmentURL(uuid: uuid, qualityId: qualityId, index: index) else {
-          throw DownloadError.segment(index: index, status: 0)
-        }
-        let part = BackgroundSegment(uuid: uuid, jobFolder: jobDir, index: index)
-        if let task = BackgroundTransfer.shared.start(url, part: part) {
-          outstanding.append((index, task))
-        }
       }
     }
 
-    try handOver()
-    BackgroundJournal.shared.record("handed over \(next) of \(total) parts")
-
-    // Said after the hand-over, never before it: this event releases the queue's
-    // start lease, and a lease released while the lesson was still being handed
-    // over is exactly the moment the app could be suspended mid-turn.
-    onProgress(DownloadProgress(phase: .downloading, segmentsDone: done, segmentsTotal: total, bytes: bytes))
-
-    while !outstanding.isEmpty {
-      let part = outstanding.removeFirst()
-      let size = try await partSize(part, uuid: uuid, qualityId: qualityId, jobDir: jobDir)
-      done += 1
-      bytes += size
-      onProgress(DownloadProgress(phase: .downloading, segmentsDone: done, segmentsTotal: total, bytes: bytes))
-      try Task.checkCancellation()
-      try handOver()
-    }
+    let elapsed = Int(Date().timeIntervalSince(lessonStart) * 1000)
+    BackgroundJournal.shared.record(
+      "\(missing.count) parts in \(elapsed) ms (\(elapsed / missing.count) ms/part, first settles \(settles.map { String($0) }.joined(separator: "/")) ms)"
+    )
     return bytes
   }
 
