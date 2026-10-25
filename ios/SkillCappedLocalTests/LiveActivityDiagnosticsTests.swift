@@ -113,12 +113,20 @@ final class LiveActivityDiagnosticsTests: XCTestCase {
   }
 
   func testTheInstalledWidgetReportsItsOwnVersion() throws {
+    // Separate folders on purpose: Bundle caches a path it has already answered
+    // for, so a bundle read as absent would keep answering nil after its plist
+    // arrived.
+    let empty = FileManager.default.temporaryDirectory
+      .appendingPathComponent("ver-empty-\(UUID().uuidString).appex")
+    try FileManager.default.createDirectory(at: empty, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: empty) }
+
+    XCTAssertNil(LiveActivityInspector.version(empty))
+
     let root = FileManager.default.temporaryDirectory
       .appendingPathComponent("ver-\(UUID().uuidString).appex")
     try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: root) }
-
-    XCTAssertNil(LiveActivityInspector.version(root))
 
     let info: [String: Any] = [
       "CFBundleShortVersionString": "1.23.2",
