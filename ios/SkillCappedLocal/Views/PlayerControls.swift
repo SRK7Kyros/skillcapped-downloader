@@ -127,6 +127,6 @@ struct PlayerHUDView: View {
     .foregroundStyle(.white)
     .padding(.horizontal, 18)
     .padding(.vertical, 13)
-    .glass(RoundedRectangle(cornerRadius: 20, style: .continuous), tint: 0.5, rim: 0.44)
+    .glass(RoundedRectangle(cornerRadius: 20, style: .continuous), tint: 0.58, rim: 0.54)
   }
 }

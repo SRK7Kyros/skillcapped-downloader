@@ -786,7 +786,7 @@ private struct Chrome: View {
           .font(.system(size: 13, weight: .bold))
           .foregroundStyle(.white)
           .frame(width: 32, height: 32)
-          .glass(Circle(), tint: 0.36, rim: 0.5)
+          .glass(Circle(), tint: 0.46, rim: 0.62)
       }
       .buttonStyle(.plain)
       .accessibilityLabel("Close")
@@ -808,7 +808,7 @@ private struct Chrome: View {
 
       RoutePicker(diameter: 32)
         .frame(width: 32, height: 32)
-        .glass(Circle(), tint: 0.36, rim: 0.5)
+        .glass(Circle(), tint: 0.46, rim: 0.62)
         .accessibilityLabel("Audio and video output")
 
       if pictureInPicture {
@@ -817,7 +817,7 @@ private struct Chrome: View {
             .font(.system(size: 13, weight: .bold))
             .foregroundStyle(.white)
             .frame(width: 32, height: 32)
-            .glass(Circle(), tint: 0.36, rim: 0.5)
+            .glass(Circle(), tint: 0.46, rim: 0.62)
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Picture in picture")
@@ -848,7 +848,7 @@ private struct Chrome: View {
   private func floatingButton<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
     content()
       .frame(width: 44, height: 44)
-      .glass(Circle(), tint: 0.36, rim: 0.46)
+      .glass(Circle(), tint: 0.46, rim: 0.58)
   }
 
   /// One row: every control at the same height, and the timeline the only thing
@@ -873,7 +873,7 @@ private struct Chrome: View {
     }
     .padding(.horizontal, 14)
     .padding(.vertical, 6)
-    .glass(Capsule(), tint: 0.44, rim: 0.46, lift: 0.36)
+    .glass(Capsule(), tint: 0.52, rim: 0.58, rimWidth: 1.2, lift: 0.4)
   }
 
   private var playButton: some View {
