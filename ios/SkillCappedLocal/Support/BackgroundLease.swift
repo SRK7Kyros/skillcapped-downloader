@@ -18,7 +18,7 @@ final class BackgroundLease {
       BackgroundJournal.shared.record("lease expired \(name)")
       self?.end()
     }
-    BackgroundJournal.shared.record("lease +\(name)")
+    BackgroundJournal.shared.record(token == .invalid ? "lease refused \(name)" : "lease +\(name)")
   }
 
   func end() {
