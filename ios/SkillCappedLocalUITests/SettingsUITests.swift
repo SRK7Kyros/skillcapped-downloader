@@ -38,23 +38,36 @@ final class SettingsUITests: XCTestCase {
     XCTAssertTrue(copy.exists, "Settings should carry the copy button:\n\(tree)")
     XCTAssertEqual(copy.label, "Copy logs")
 
-    copy.tap()
+    // A scroll view can still be decelerating when XCUITest measures a row, and a
+    // tap delivered into that motion is swallowed — so the form is given a moment
+    // to settle, and the tap goes through the button itself.
+    Thread.sleep(forTimeInterval: 0.5)
+    let button = app.buttons["settings.copyLogs"]
+    XCTAssertTrue(
+      button.isHittable,
+      "the copy button should be reachable:\n\(app.debugDescription)"
+    )
 
-    // The confirmation is looked for as a fresh query, polled: reading `label`
-    // off the element failed the whole test when one accessibility snapshot
-    // landed while the row was re-rendering, whereas `exists` answers false.
-    // The label reverts after two seconds, so the poll has to be quick.
-    let copiedLabel = app.buttons["Copied"]
-    var said = false
-    var polls = 0
-    while !said && polls < 20 {
-      said = copiedLabel.exists
-      if !said { Thread.sleep(forTimeInterval: 0.2) }
-      polls += 1
+    // The durable proof, polled as a fresh query: reading `label` off the element
+    // failed a whole run when one accessibility snapshot landed mid re-render,
+    // whereas `exists` answers false. A second tap costs nothing (it copies
+    // again) and covers a first tap the scroll view ate.
+    let confirmation = app.staticTexts["settings.copyLogs.confirmation"]
+    var copied = false
+    var attempts = 0
+    while !copied && attempts < 2 {
+      attempts += 1
+      button.tap()
+      var polls = 0
+      while !copied && polls < 15 {
+        copied = confirmation.exists
+        if !copied { Thread.sleep(forTimeInterval: 0.2) }
+        polls += 1
+      }
     }
     XCTAssertTrue(
-      said,
-      "the button should say what it did for a moment:\n\(app.debugDescription)"
+      copied,
+      "copying should leave a line saying what reached the clipboard:\n\(app.debugDescription)"
     )
 
     let shot = XCTAttachment(screenshot: app.screenshot())

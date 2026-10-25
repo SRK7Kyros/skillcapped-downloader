@@ -15,6 +15,9 @@ struct SettingsView: View {
   @State private var journal: [String] = []
   @State private var copied = false
   @State private var copyToken = 0
+  /// How many journal lines the last copy put on the clipboard, so the sheet can
+  /// say what happened after the button's own two-second acknowledgement fades.
+  @State private var copiedLines: Int?
 
   var body: some View {
     NavigationStack {
@@ -84,6 +87,12 @@ struct SettingsView: View {
               BackgroundJournal.shared.clear()
               journal = []
             }
+          }
+          if let copiedLines {
+            Text("Copied \(copiedLines) lines to the clipboard.")
+              .font(.caption2)
+              .foregroundStyle(Palette.inkDim)
+              .accessibilityIdentifier("settings.copyLogs.confirmation")
           }
         } header: {
           Text("Background queue")
@@ -171,6 +180,7 @@ struct SettingsView: View {
     UIPasteboard.general.string = summary.text
     report = activity
     journal = Array(summary.journal.suffix(Self.shownJournalLines))
+    copiedLines = summary.journal.count
     copied = true
     copyToken += 1
     let token = copyToken
