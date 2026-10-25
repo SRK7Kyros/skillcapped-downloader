@@ -43,6 +43,18 @@ enum TSRemux {
   /// small enough that a lesson is never carried in memory.
   static let backlog = 96
 
+  /// How long the writer may take nothing before it is called stuck, and the
+  /// first and longest pause between asking it again.
+  ///
+  /// From here a starved writer and a wedged one look identical, and the two are
+  /// not equally likely: a CI runner running this test beside the UI suite has
+  /// left it accepting nothing for 20 seconds (the fixture normally repackages in
+  /// 0.03), so a short bound turns a loaded host into a failed release. A writer
+  /// that is genuinely stuck never recovers and reports the same sentence.
+  static let stallLimit = 120.0
+  static let firstPause = 0.002
+  static let longestPause = 0.05
+
   /// Rewrites `source` into `destination`, reporting how much of the file has
   /// been read (0…1) and answering how many seconds it holds.
   ///
@@ -371,6 +383,7 @@ enum TSRemux {
     /// standing still would stop the export instead of pacing it.
     private func pump(until settled: () -> Bool, abandoning: Bool) throws {
       var waited = 0.0
+      var pause = TSRemux.firstPause
       while true {
         var moved = false
         for track in tracks {
@@ -385,13 +398,15 @@ enum TSRemux {
         if let reason = writer.error {
           throw Failure.writer("the writer refused a sample: \(reason.localizedDescription)")
         }
-        guard writer.status == .writing, waited < 20 else {
+        guard writer.status == .writing, waited < TSRemux.stallLimit else {
           throw Failure.writer(
-            "the writer stopped accepting data (status \(writer.status.rawValue); \(tally) written)"
+            "the writer stopped accepting data for \(Int(waited.rounded()))s "
+              + "(status \(writer.status.rawValue); \(tally) written; \(queued) queued)"
           )
         }
-        Thread.sleep(forTimeInterval: 0.002)
-        waited += 0.002
+        Thread.sleep(forTimeInterval: pause)
+        waited += pause
+        pause = min(pause * 2, TSRemux.longestPause)
       }
     }
 
@@ -412,6 +427,12 @@ enum TSRemux {
     private var tally: String {
       tracks
         .map { "\($0.input.mediaType == .video ? "picture" : "sound") \($0.fed)" }
+        .joined(separator: ", ")
+    }
+
+    private var queued: String {
+      tracks
+        .map { "\($0.input.mediaType == .video ? "picture" : "sound") \($0.samples.count)" }
         .joined(separator: ", ")
     }
   }

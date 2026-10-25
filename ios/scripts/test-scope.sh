@@ -23,7 +23,7 @@
 #                 [--mode auto|all|none] [--self-test]
 #
 #   --base      diff against this rev (default: $BEFORE, then HEAD~1, then all)
-#   --message   the commit message; `[ui-all]` / `[ui-none]` override the mode
+#   --message   the commit subject; `[ui-all]` / `[ui-none]` override the mode
 #   --mode      auto (the diff decides), all, or none
 #   --self-test proves the table against known paths, no git required
 #
@@ -197,6 +197,17 @@ scope_for() {
 }
 
 # ---------------------------------------------------------------- self-test
+# Only the subject line carries the token. A body that merely explains the
+# escape hatch must not fire it — the commit that introduced this scoping ran the
+# whole suite because its message quoted both tokens while describing them.
+mode_from() {
+  case "$(printf '%s\n' "$1" | head -n 1)" in
+    *"[ui-all]"*) printf 'all' ;;
+    *"[ui-none]"*) printf 'none' ;;
+    *) printf '' ;;
+  esac
+}
+
 self_test() {
   fails=0
   check() {
@@ -257,6 +268,24 @@ self_test() {
     ios/SkillCappedLocal/Views/PlayerScreen.swift \
     ios/SkillCappedLocal/Views/SettingsView.swift
 
+  # the escape hatch is read from the subject, and only from the subject
+  check_mode() {
+    want=$1
+    got=$(mode_from "$2")
+    if [ "$got" = "$want" ]; then
+      printf 'ok    %-46s -> mode %s\n' "$(printf '%s' "$2" | head -n 1)" "${got:-unchanged}"
+    else
+      printf 'FAIL  %-46s -> mode %s (want %s)\n' "$(printf '%s' "$2" | head -n 1)" "${got:-unchanged}" "${want:-unchanged}"
+      fails=$((fails + 1))
+    fi
+  }
+  check_mode all "[ui-all] bump the chrome"
+  check_mode none "[ui-none] fix a typo in the readme"
+  check_mode "" "ci: run only the UI tests a change can move
+
+A commit body may name the tokens [ui-all] / [ui-none] while explaining them."
+  check_mode "" "fix(ios): the writer is given longer to take data"
+
   if [ "$fails" -ne 0 ]; then
     echo "$fails of the table's cases disagree" >&2
     exit 1
@@ -287,16 +316,16 @@ case "$mode" in
   *) die "--mode takes auto, all or none (got '$mode')" ;;
 esac
 
-# A commit can overrule the table when the author knows better. The message is
+# A commit can overrule the table when the author knows better. The subject is
 # read from the head commit when one was not handed in, so a local run behaves
 # exactly like the workflow's.
 if [ -z "$message" ]; then
   message=$(git log -1 --format=%B "$head_rev" 2>/dev/null || true)
 fi
-case "$message" in
-  *"[ui-all]"*) mode=all ;;
-  *"[ui-none]"*) mode=none ;;
-esac
+token=$(mode_from "$message")
+if [ -n "$token" ]; then
+  mode=$token
+fi
 
 emit() {
   ui=$1

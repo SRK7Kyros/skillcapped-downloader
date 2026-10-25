@@ -338,4 +338,19 @@ final class TSDemuxerTests: XCTestCase {
     }
     XCTAssertFalse(FileManager.default.fileExists(atPath: destination.path))
   }
+
+  /// A writer that takes nothing is not proof of a stuck writer: on the CI runner
+  /// this suite shares its CPUs with the UI suite, which starved the writer for
+  /// 20 seconds where the fixture normally repackages in 0.03. The tolerance is a
+  /// decision, so it is pinned rather than left to be quietly tightened again.
+  func testTheWriterIsGivenLongerThanALoadedRunnerStalls() {
+    XCTAssertGreaterThanOrEqual(
+      TSRemux.stallLimit,
+      60,
+      "a starved writer must be given a minute before the export is called stuck"
+    )
+    XCTAssertGreaterThan(TSRemux.firstPause, 0, "the wait must not be a spin")
+    XCTAssertGreaterThan(TSRemux.longestPause, TSRemux.firstPause, "the wait should back off")
+    XCTAssertLessThanOrEqual(TSRemux.longestPause, 0.1, "and still notice a writer that resumes")
+  }
 }
