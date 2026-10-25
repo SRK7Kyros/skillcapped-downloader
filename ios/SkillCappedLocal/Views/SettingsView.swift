@@ -13,10 +13,9 @@ struct SettingsView: View {
   @State private var picking = false
   @State private var report: LiveActivityReport?
   @State private var journal: [String] = []
-  @State private var copied = false
-  @State private var copyToken = 0
-  /// How many journal lines the last copy put on the clipboard, so the sheet can
-  /// say what happened after the button's own two-second acknowledgement fades.
+  /// How many journal lines the last copy put on the clipboard. The banner keeps
+  /// saying it because a copy whose only proof is a two-second button label looks
+  /// like nothing happened — and the sheet's log itself is far down a long form.
   @State private var copiedLines: Int?
 
   var body: some View {
@@ -75,12 +74,6 @@ struct SettingsView: View {
             }
           }
           HStack {
-            Button {
-              copyLogs()
-            } label: {
-              Label(copied ? "Copied" : "Copy logs", systemImage: copied ? "checkmark" : "doc.on.doc")
-            }
-            .accessibilityIdentifier("settings.copyLogs")
             Spacer()
             Button("Refresh") { journal = BackgroundJournal.shared.lines(Self.shownJournalLines) }
             Button("Clear", role: .destructive) {
@@ -88,16 +81,10 @@ struct SettingsView: View {
               journal = []
             }
           }
-          if let copiedLines {
-            Text("Copied \(copiedLines) lines to the clipboard.")
-              .font(.caption2)
-              .foregroundStyle(Palette.inkDim)
-              .accessibilityIdentifier("settings.copyLogs.confirmation")
-          }
         } header: {
           Text("Background queue")
         } footer: {
-          Text("What the queue did while the screen was off: the system hands over a part, the app writes one line here. A download that stops in the background stops on one of these lines.\n\nOnly the last \(Self.shownJournalLines) lines are listed; Copy logs puts all \(BackgroundJournal.limit) on the clipboard, with the queue's current state and the Live Activity facts listed below.")
+          Text("What the queue did while the screen was off: the system hands over a part, the app writes one line here. A download that stops in the background stops on one of these lines.\n\nOnly the last \(Self.shownJournalLines) lines are listed; Copy logs at the top of this sheet puts all \(BackgroundJournal.limit) on the clipboard, with the queue's current state and the Live Activity facts below, so nothing has to be read off a scrolling screen.")
         }
 
         Section {
@@ -150,7 +137,23 @@ struct SettingsView: View {
       }
       .navigationTitle("Library")
       .navigationBarTitleDisplayMode(.inline)
+      .safeAreaInset(edge: .top, spacing: 0) {
+        if let copiedLines {
+          Text("Copied \(copiedLines) lines to the clipboard.")
+            .font(.caption.weight(.medium))
+            .foregroundStyle(Palette.ink)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .background(Palette.surfaceStrong, in: Capsule())
+            .padding(.top, 6)
+            .accessibilityIdentifier("settings.copyLogs.confirmation")
+        }
+      }
       .toolbar {
+        ToolbarItem(placement: .topBarLeading) {
+          Button("Copy logs") { copyLogs() }
+            .accessibilityIdentifier("settings.copyLogs")
+        }
         ToolbarItem(placement: .topBarTrailing) {
           Button("Done") { dismiss() }
         }
@@ -178,16 +181,10 @@ struct SettingsView: View {
       limit: BackgroundJournal.limit
     )
     UIPasteboard.general.string = summary.text
-    report = activity
-    journal = Array(summary.journal.suffix(Self.shownJournalLines))
-    copiedLines = summary.journal.count
-    copied = true
-    copyToken += 1
-    let token = copyToken
-    Task { @MainActor in
-      try? await Task.sleep(for: .seconds(2))
-      guard token == copyToken else { return }
-      copied = false
+    withAnimation(.easeOut(duration: 0.2)) {
+      report = activity
+      journal = Array(summary.journal.suffix(Self.shownJournalLines))
+      copiedLines = summary.journal.count
     }
   }
 }
