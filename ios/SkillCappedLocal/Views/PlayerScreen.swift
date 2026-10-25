@@ -725,9 +725,8 @@ private struct Chrome: View {
   var body: some View {
     VStack(spacing: 0) {
       header
-        .padding(.leading, PlayerChromeLayout.edge(inset: insets.leading))
-        .padding(.trailing, PlayerChromeLayout.edge(inset: insets.trailing))
-        .padding(.top, PlayerChromeLayout.edge(inset: insets.top))
+        .padding(.horizontal, headerSide)
+        .padding(.top, topMargin)
 
       Spacer(minLength: 0)
 
@@ -737,14 +736,34 @@ private struct Chrome: View {
         }
         bar
       }
-      .padding(.leading, PlayerChromeLayout.edge(inset: insets.leading))
-      .padding(.trailing, PlayerChromeLayout.edge(inset: insets.trailing))
-      .padding(.bottom, PlayerChromeLayout.edge(inset: insets.bottom))
+      .padding(.horizontal, barSide)
+      .padding(.bottom, bottomMargin)
     }
   }
 
   private var floatsControls: Bool {
     PlayerChromeLayout.floatsControls(width: window.width)
+  }
+
+  /// The display's own corner, which every margin here is measured against.
+  private var corner: CGFloat { DisplayCorner.current }
+
+  /// Where the header and the bar sit from the edge they are nearest. The top and
+  /// bottom insets carry the island, the status bar and the home indicator; the
+  /// leads and trails are deliberately unused — the island sits halfway along a
+  /// side, so it is not in the way of a row that runs along an edge, and adding
+  /// its inset to both sides is what emptied the corners.
+  private var topMargin: CGFloat { PlayerChromeLayout.away(safe: insets.top) }
+  private var bottomMargin: CGFloat { PlayerChromeLayout.away(safe: insets.bottom) }
+
+  /// …and how far each row sits from the glass sideways, which follows the
+  /// display's corner at that row's height rather than a flat margin.
+  private var headerSide: CGFloat {
+    PlayerChromeLayout.side(radius: corner, fromCorner: topMargin)
+  }
+
+  private var barSide: CGFloat {
+    PlayerChromeLayout.side(radius: corner, fromCorner: bottomMargin)
   }
 
   private var rateLabel: String {
@@ -755,20 +774,19 @@ private struct Chrome: View {
     "Playback speed, " + (rate == 1 ? "normal" : String(format: "%g", rate) + " times")
   }
 
-  /// Floating too: a close button and the name of the lesson at the left, the
   /// Floating too: a close button and the name of the lesson at the left, then
   /// the output switch (AirPlay and the phone's own speaker) and the Picture in
   /// Picture switch in the top-right corner, with the picture still
   /// visible behind them — a full-screen scrim is what made the old chrome read
   /// as a drawer.
   private var header: some View {
-    HStack(spacing: 9) {
+    HStack(spacing: 10) {
       Button(action: close) {
         Image(systemName: "xmark")
-          .font(.system(size: 12, weight: .bold))
+          .font(.system(size: 13, weight: .bold))
           .foregroundStyle(.white)
-          .frame(width: 30, height: 30)
-          .background(.black.opacity(0.42), in: Circle())
+          .frame(width: 32, height: 32)
+          .glass(Circle(), tint: 0.36, rim: 0.5)
       }
       .buttonStyle(.plain)
       .accessibilityLabel("Close")
@@ -784,21 +802,22 @@ private struct Chrome: View {
             .foregroundStyle(.white.opacity(0.7))
         }
       }
-      .shadow(color: .black.opacity(0.55), radius: 4, y: 1)
+      .shadow(color: .black.opacity(0.6), radius: 4, y: 1)
 
       Spacer(minLength: 0)
 
-      RoutePicker()
-        .frame(width: 30, height: 30)
+      RoutePicker(diameter: 32)
+        .frame(width: 32, height: 32)
+        .glass(Circle(), tint: 0.36, rim: 0.5)
         .accessibilityLabel("Audio and video output")
 
       if pictureInPicture {
         Button(action: togglePictureInPicture) {
           Image(systemName: "pip.enter")
-            .font(.system(size: 12, weight: .bold))
+            .font(.system(size: 13, weight: .bold))
             .foregroundStyle(.white)
-            .frame(width: 30, height: 30)
-            .background(.black.opacity(0.42), in: Circle())
+            .frame(width: 32, height: 32)
+            .glass(Circle(), tint: 0.36, rim: 0.5)
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Picture in picture")
@@ -828,14 +847,14 @@ private struct Chrome: View {
 
   private func floatingButton<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
     content()
-      .frame(width: 42, height: 42)
-      .background(.black.opacity(0.45), in: Circle())
-      .overlay { Circle().stroke(.white.opacity(0.12), lineWidth: 1) }
-      .shadow(color: .black.opacity(0.35), radius: 10, y: 3)
+      .frame(width: 44, height: 44)
+      .glass(Circle(), tint: 0.36, rim: 0.46)
   }
 
   /// One row: every control at the same height, and the timeline the only thing
-  /// that stretches.
+  /// that stretches. The bar is a capsule, which is the shape the display's own
+  /// corner gives a surface this tall on every phone — the two curves share a
+  /// centre, so the bar reads as cut from the same glass as the screen.
   private var bar: some View {
     HStack(spacing: 2) {
       PlayerButton(glyph: "gobackward.10", size: 16, label: "Back 10 seconds") { skip(-10) }
@@ -852,17 +871,9 @@ private struct Chrome: View {
         next
       }
     }
-    .padding(.horizontal, 10)
-    .padding(.vertical, 5)
-    .background(
-      RoundedRectangle(cornerRadius: 18, style: .continuous)
-        .fill(.black.opacity(0.55))
-    )
-    .overlay {
-      RoundedRectangle(cornerRadius: 18, style: .continuous)
-        .stroke(.white.opacity(0.1), lineWidth: 1)
-    }
-    .shadow(color: .black.opacity(0.35), radius: 14, y: 4)
+    .padding(.horizontal, 14)
+    .padding(.vertical, 6)
+    .glass(Capsule(), tint: 0.44, rim: 0.46, lift: 0.36)
   }
 
   private var playButton: some View {

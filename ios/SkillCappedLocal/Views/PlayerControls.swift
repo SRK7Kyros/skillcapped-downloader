@@ -127,13 +127,6 @@ struct PlayerHUDView: View {
     .foregroundStyle(.white)
     .padding(.horizontal, 18)
     .padding(.vertical, 13)
-    .background(
-      RoundedRectangle(cornerRadius: 14, style: .continuous)
-        .fill(.black.opacity(0.62))
-    )
-    .overlay {
-      RoundedRectangle(cornerRadius: 14, style: .continuous)
-        .stroke(Color.white.opacity(0.12), lineWidth: 1)
-    }
+    .glass(RoundedRectangle(cornerRadius: 20, style: .continuous), tint: 0.5, rim: 0.44)
   }
 }

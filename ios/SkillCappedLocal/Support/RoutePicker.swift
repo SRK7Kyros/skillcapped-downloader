@@ -18,7 +18,9 @@ struct RoutePicker: UIViewRepresentable {
     view.tintColor = .white
     view.activeTintColor = UIColor(Palette.brand)
     view.prioritizesVideoDevices = true
-    view.backgroundColor = UIColor.black.withAlphaComponent(0.42)
+    // The player draws the glass the button sits in, so the system's own black
+    // disc would show through it as a darker circle.
+    view.backgroundColor = .clear
     view.layer.cornerRadius = diameter / 2
     view.clipsToBounds = true
     view.setContentHuggingPriority(.required, for: .horizontal)

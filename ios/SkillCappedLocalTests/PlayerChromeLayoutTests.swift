@@ -29,16 +29,55 @@ final class PlayerChromeLayoutTests: XCTestCase {
     XCTAssertFalse(PlayerChromeLayout.floatsControls(width: 0))
   }
 
-  func testAPhoneUprightKeepsItsOwnMargin() {
-    XCTAssertEqual(PlayerChromeLayout.edge(inset: 0), PlayerChromeLayout.edgeMargin)
+  func testTheEdgeAwayFromTheCornerKeepsTheFlatMargin() {
+    XCTAssertEqual(PlayerChromeLayout.away(safe: 0), PlayerChromeLayout.edgeMargin)
   }
 
-  func testAPhoneOnItsSideClearsTheCornerItTurned() {
-    XCTAssertEqual(PlayerChromeLayout.edge(inset: 59), 71, "the side inset a notched phone reports in landscape")
+  func testTheIslandOutranksTheMargin() {
+    XCTAssertEqual(PlayerChromeLayout.away(safe: 59), 59, "the side inset a notched phone reports")
+    XCTAssertEqual(PlayerChromeLayout.away(safe: 21), 21, "the home indicator")
+    XCTAssertGreaterThan(PlayerChromeLayout.away(safe: 59), PlayerChromeLayout.edgeMargin)
+  }
+
+  func testACornerPushesTheRowInByWhatTheGlassTook() {
+    let flat = PlayerChromeLayout.side(radius: 0, fromCorner: PlayerChromeLayout.edgeMargin)
+    XCTAssertEqual(flat, PlayerChromeLayout.edgeMargin, "square glass needs no more than the margin")
+    XCTAssertEqual(
+      PlayerChromeLayout.side(radius: 62, fromCorner: 62),
+      PlayerChromeLayout.edgeMargin,
+      "the curve has ended by then, so the corner cannot push the row in further"
+    )
+    let inTheCorner = PlayerChromeLayout.side(radius: 62, fromCorner: PlayerChromeLayout.edgeMargin)
+    XCTAssertGreaterThan(inTheCorner, PlayerChromeLayout.edgeMargin)
+    XCTAssertLessThan(inTheCorner, PlayerChromeLayout.edgeMargin + 8, "a corner is a nudge, not a squeeze")
+  }
+
+  func testARowHigherUpTheEdgeKeepsLessRoomThanOneLowerDown() {
+    // A phone on its side has no island to clear, so its header sits closer to
+    // its corners than its bar does — and both are still inside the glass.
+    let header = PlayerChromeLayout.side(
+      radius: 62,
+      fromCorner: PlayerChromeLayout.away(safe: 0)
+    )
+    let bar = PlayerChromeLayout.side(
+      radius: 62,
+      fromCorner: PlayerChromeLayout.away(safe: 21)
+    )
+    XCTAssertGreaterThan(header, bar)
+  }
+
+  func testTheCornerControlsSitOnTheGlassAndNotThroughIt() {
+    let radius: CGFloat = 62
+    let top = PlayerChromeLayout.away(safe: 0)
+    let side = PlayerChromeLayout.side(radius: radius, fromCorner: top)
+    XCTAssertTrue(
+      DisplayCorner.isInside(x: side, y: top, radius: radius),
+      "the close button's box must be on the glass, not off its corner"
+    )
     XCTAssertGreaterThan(
-      PlayerChromeLayout.edge(inset: 59),
-      PlayerChromeLayout.edge(inset: 0),
-      "a turned corner needs more room than a flat edge"
+      side + top,
+      DisplayCorner.clearance(radius: radius) * 2,
+      "and it keeps its air rather than touching the curve"
     )
   }
 }

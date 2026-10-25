@@ -97,34 +97,39 @@ final class PlayerChromeUITests: XCTestCase {
       "a landscape window has room for the whole transport in one row"
     )
 
-    // What a landscape screenshot caught: the close button and the Picture in
-    // Picture switch sat about ten points from the glass, under the corner the
-    // phone had just turned, the header touched the top edge, and the bar kept
-    // the same ten-point margins — so the chrome read as clipped and off-centre
-    // against the letterboxed picture.
+    // The corners are used, not avoided: a rounded display asks a control to sit
+    // in it. Both corners of the header take one, each far enough off the glass
+    // that the continuous curve cannot clip it and close enough to read as
+    // sitting *in* the corner rather than beside it. The glass of a phone on its
+    // side has already come back about eight points at the diagonal.
     let screen = app.frame
     let close = app.buttons["Close"]
     XCTAssertTrue(close.exists, "the header should carry a close button; window \(screen)")
     if close.exists {
+      let left = close.frame.minX - screen.minX
+      let top = close.frame.minY - screen.minY
       XCTAssertGreaterThanOrEqual(
-        close.frame.minX - screen.minX,
-        50,
-        "the close button should clear the corner a turned phone carries; close at \(close.frame), window \(screen)"
-      )
-      XCTAssertGreaterThanOrEqual(
-        close.frame.minY - screen.minY,
+        left,
         8,
-        "…and should not be trimmed by the top edge"
+        "the close button should stay off the corner's glass; close at \(close.frame), window \(screen)"
+      )
+      XCTAssertGreaterThanOrEqual(top, 8, "…and off the top edge")
+      XCTAssertLessThanOrEqual(
+        left,
+        40,
+        "…while sitting in the corner rather than a flat margin away from it (\(left) points in)"
       )
     }
 
     let pictureInPicture = app.buttons["Picture in picture"]
     if pictureInPicture.exists {
+      let right = screen.maxX - pictureInPicture.frame.maxX
       XCTAssertGreaterThanOrEqual(
-        screen.maxX - pictureInPicture.frame.maxX,
-        50,
-        "Picture in picture should clear the right corner too; it sits at \(pictureInPicture.frame), window \(screen)"
+        right,
+        8,
+        "Picture in picture should stay off the right corner too; it sits at \(pictureInPicture.frame), window \(screen)"
       )
+      XCTAssertLessThanOrEqual(right, 40, "…and sit in that corner (\(right) points in)")
     }
 
     let leading = app.buttons["Back 10 seconds"].frame.minX - screen.minX
