@@ -7,6 +7,14 @@ on:
         description: Marketing version baked into the IPA (blank takes it from ios/project.yml)
         required: false
         default: ""
+      ui:
+        description: Which UI tests to run — a dispatch is usually the final check, so all
+        type: choice
+        options:
+          - all
+          - auto
+          - none
+        default: all
   push:
     paths:
       - "ios/**"
@@ -25,6 +33,32 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
+        with:
+          # The test scope is read from the diff, so the base commit has to be in
+          # the clone; a depth-1 checkout cannot answer "what changed".
+          fetch-depth: 0
+
+      # Which UI classes this change can actually move. The suite is ~11 minutes
+      # and ~6.5 of that is the UI tests, each launching the app again on a cold
+      # simulator — re-running a screen the diff never touched only costs the wait.
+      # The table lives in ios/scripts/test-scope.sh and answers `all` for
+      # anything it cannot prove safe, so this narrows the suite without ever
+      # narrowing what is checked. `[ui-all]` / `[ui-none]` in a commit message
+      # overrule it; a dispatch defaults to `all`, which is the final check.
+      - name: Decide the test scope
+        id: scope
+        env:
+          BEFORE: ${{ github.event.before }}
+          MESSAGE: ${{ github.event.head_commit.message }}
+          MODE: ${{ inputs.ui || 'auto' }}
+        run: |
+          ios/scripts/test-scope.sh --base "$BEFORE" --message "$MESSAGE" --mode "$MODE"
+
+      # Proves the table in a second, without a simulator: a typo in a pattern
+      # would otherwise only show up as a suite that quietly stopped running a
+      # test it should have run.
+      - name: Prove the test-scope table
+        run: ios/scripts/test-scope.sh --self-test
 
       - name: Use the newest Xcode
         run: |
@@ -70,6 +104,9 @@ jobs:
       - name: Unit and UI tests
         working-directory: ios
         timeout-minutes: 30
+        env:
+          # Splits into separate arguments on purpose; empty means the whole suite.
+          SCOPE_FLAGS: ${{ steps.scope.outputs.flags }}
         run: |
           set +e
           # 120 s per test was the tripwire, not a hang detector: on a loaded
@@ -88,6 +125,7 @@ jobs:
             -default-test-execution-time-allowance 300 \
             -maximum-test-execution-time-allowance 600 \
             -resultBundlePath "$RUNNER_TEMP/tests.xcresult" \
+            $SCOPE_FLAGS \
             > "$RUNNER_TEMP/tests.log" 2>&1
           STATUS=$?
           grep -E "Test Case .*(passed|failed)|Executed [0-9]+ test|error:|\*\* TEST" "$RUNNER_TEMP/tests.log" | tail -80

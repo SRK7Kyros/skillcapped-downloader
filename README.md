@@ -562,6 +562,19 @@ on the phone itself, into the same folders the desktop build writes.
   the demo library writes — so a run with both opens a *catalogue* course that
   this phone already has, which is what `BrowseUITests` asserts in both
   orientations.
+- **Which tests a push runs.** The suite is ~11 minutes and ~6.5 of that is the UI
+  tests, each launching the app again on a cold simulator, so
+  `ios/scripts/test-scope.sh` reads the diff and picks the UI classes the change
+  can actually move: a `Model/` or logic-only `Support/` change runs the unit
+  suite and no simulator work at all, a player change runs `PlayerChromeUITests`,
+  a course change runs `BrowseUITests` + `LessonActionsUITests`. Anything it
+  cannot prove safe — the shared shell `RootView`, the palette, the demo fixtures,
+  an unrecognised view, `project.yml` — runs the whole suite, and so does a commit
+  that bumps `MARKETING_VERSION`, which makes a version bump the "we're happy,
+  check everything" run. `[ui-all]` / `[ui-none]` in a commit message overrule it,
+  a manual dispatch defaults to `all`, and `--self-test` proves the table in a
+  second (CI runs it before every suite, so a broken pattern cannot quietly stop
+  a test from running).
 
 ## Development
 
