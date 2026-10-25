@@ -100,6 +100,20 @@ final class PlayerChromeUITests: XCTestCase {
       "a landscape window has room for the whole transport in one row"
     )
 
+    let elapsed = app.staticTexts["player.elapsed"]
+    let remaining = app.staticTexts["player.remaining"]
+    guard elapsed.exists, remaining.exists else {
+      XCTFail("both readouts should be in the bar; window \(app.frame)")
+      return
+    }
+    XCTAssertEqual(
+      remaining.frame.height,
+      elapsed.frame.height,
+      accuracy: 3,
+      "the time left should sit on one line like the elapsed time, not wrap: remaining \(remaining.frame), elapsed \(elapsed.frame)"
+    )
+    XCTAssertLessThan(remaining.frame.height, 24, "one line of the bar's 11-point clock")
+
     // The corners are used, not avoided: a rounded display asks a control to sit
     // in it. Both corners of the header take one, each far enough off the glass
     // that the continuous curve cannot clip it and close enough to read as

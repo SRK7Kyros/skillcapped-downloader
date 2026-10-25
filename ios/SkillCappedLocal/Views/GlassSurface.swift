@@ -1,25 +1,29 @@
 import SwiftUI
 
-/// A sheet of the system's glass, drawn the way iOS 26 draws one: a blurred
-/// backdrop deep enough that the glyphs on it stay readable over a bright frame,
-/// a specular bloom where the light lands on it, an edge lit all the way round
-/// the shape — brightest where the light hits, lifting again where the picture
-/// shines through at the foot — a hair of light and a hair of shade just inside
-/// that edge, and a shadow that lifts it off the video.
+/// A sheet of glass under a control.
 ///
-/// The app runs on iOS 17, where `glassEffect` does not exist, so the material is
-/// assembled by hand: a system material, a tint, a sheen, a bloom, a rim, two
-/// inner hairlines and an outer one. `Reduce Transparency` swaps the whole thing
-/// for a flat fill, which is what that setting asks for.
+/// On iOS 26 this *is* the system's glass: `glassEffect` draws it, so the rim,
+/// the refraction, the specular highlight and the way the material samples the
+/// picture behind it are the same ones a system control has — with one tint on
+/// top, deep enough that white glyphs stay readable over a bright frame.
+///
+/// The app still runs on iOS 17, where `glassEffect` does not exist, so the same
+/// surface can also be assembled by hand: a blurred backdrop, a tint, a sheen, a
+/// specular bloom in the leading corner, an edge lit all the way round, a hair of
+/// light over a hair of shade just inside it, and a shadow that lifts it off the
+/// video. That is the fallback — never the look a phone on iOS 26 sees.
+///
+/// `Reduce Transparency` asks for no glass at all on either path, so both draw a
+/// flat fill instead.
 struct GlassSurface<S: InsettableShape>: ViewModifier {
   var shape: S
-  /// How much of the picture the tint swallows. A bar over bright artwork takes
-  /// more than a small button does, or the timeline would read through it.
+  /// How much of the picture the hand-drawn fallback's tint swallows, and what
+  /// the system's glass is tinted with — a bar over bright artwork takes more
+  /// than a small button does, or the timeline would read through it.
   var tint: Double
-  /// How bright the rim is on the lit edge.
+  /// How bright the fallback's rim is on the lit edge.
   var rim: Double
-  /// The rim's weight. A sheet the height of the transport's bar wears a heavier
-  /// edge than a 32-point button does.
+  /// The fallback rim's weight.
   var rimWidth: Double
   /// How far the surface sits off the picture.
   var lift: Double
@@ -27,6 +31,23 @@ struct GlassSurface<S: InsettableShape>: ViewModifier {
   @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
   func body(content: Content) -> some View {
+    if #available(iOS 26.0, *), !reduceTransparency {
+      content
+        // The system's own material, tinted just enough for the glyphs — its
+        // refraction and its rim are the ones iOS 26 draws for every control,
+        // which is what makes this chrome sit beside the system's without
+        // looking like a drawing of it.
+        .glassEffect(.regular.tint(Color.black.opacity(tint * 0.4)), in: shape)
+        .shadow(color: .black.opacity(lift * 0.7), radius: 16, y: 6)
+    } else {
+      drawn(content)
+    }
+  }
+
+  /// What iOS 17–25 gets: the sheet built by hand, since there is no
+  /// `glassEffect` to ask for it.
+  @ViewBuilder
+  private func drawn(_ content: Content) -> some View {
     content
       .background { backdrop }
       .overlay { bloom }

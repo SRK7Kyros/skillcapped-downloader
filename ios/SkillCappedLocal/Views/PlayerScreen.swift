@@ -1012,27 +1012,32 @@ private struct Chrome: View {
   }
 
   /// The track with the elapsed time on its left and the time left on its right.
+  /// Both readouts take the width their text needs — a fixed 44 points wrapped
+  /// `−1:03:03` onto a second line — and the track has what is left of the row.
   private var timeline: some View {
     HStack(spacing: 8) {
-      time(PlayerMath.clock(position), width: 38, alignment: .trailing, id: "player.elapsed")
+      time(PlayerMath.clock(position), minimum: 34, alignment: .trailing, id: "player.elapsed")
 
       PlayerScrubber(position: position, duration: duration, onScrub: scrub, onCommit: commit)
         .frame(maxWidth: .infinity)
+        .layoutPriority(-1)
 
       time(
         duration > 0 ? "−" + PlayerMath.clock(max(duration - position, 0)) : "--:--",
-        width: 44,
+        minimum: 40,
         alignment: .leading,
         id: "player.remaining"
       )
     }
   }
 
-  private func time(_ text: String, width: CGFloat, alignment: Alignment, id: String) -> some View {
+  private func time(_ text: String, minimum: CGFloat, alignment: Alignment, id: String) -> some View {
     Text(text)
       .font(.system(size: 11, weight: .semibold, design: .rounded).monospacedDigit())
       .foregroundStyle(.white.opacity(0.82))
-      .frame(width: width, alignment: alignment)
+      .lineLimit(1)
+      .frame(minWidth: minimum, alignment: alignment)
+      .fixedSize()
       .accessibilityIdentifier(id)
   }
 }
