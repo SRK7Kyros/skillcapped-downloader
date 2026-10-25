@@ -27,6 +27,9 @@ struct PlayerScreen: View {
   @State private var playing = false
   @State private var stalled = false
   @State private var position: Double = 0
+  /// Whether the bar follows the player's clock or stands on a position the
+  /// user picked, which it does until the picture catches up with them.
+  @State private var hold = PlayheadHold()
   @State private var duration: Double = 0
   @State private var rate: Float = 1
   @State private var waitingForCloud = false
@@ -141,7 +144,7 @@ struct PlayerScreen: View {
           togglePlay: { togglePlay() },
           skip: { skip($0) },
           step: { step($0) },
-          scrub: { position = $0 },
+          scrub: { hold.choose(); position = $0 },
           commit: { commit($0) },
           changeRate: cycleRate,
           togglePictureInPicture: { pictureInPicture.toggle() }
@@ -267,6 +270,7 @@ struct PlayerScreen: View {
             width: size.width,
             duration: duration
           )
+          hold.choose()
           position = target
           show(.time(target))
 
@@ -405,6 +409,7 @@ struct PlayerScreen: View {
     failure = nil
     current = lesson
     position = 0
+    hold = PlayheadHold()
     duration = Double(max(lesson.seconds, 0))
     zoom = PlayerZoom.minScale
     zoomOffset = .zero
@@ -438,6 +443,7 @@ struct PlayerScreen: View {
     let saved = progress.progress(for: current.progressKey)
     if let saved, WatchProgressMath.shouldResume(position: saved.position, duration: saved.duration) {
       player.seek(to: CMTime(seconds: saved.position, preferredTimescale: 600))
+      hold.seek(saved.position)
       position = saved.position
     }
 
@@ -454,7 +460,7 @@ struct PlayerScreen: View {
       let buffering = clock.timeControlStatus == .waitingToPlayAtSpecifiedRate
       Task { @MainActor in
         if total.isFinite, total > 0 { duration = total }
-        if !isSeeking, seconds.isFinite { position = seconds }
+        if let shown = hold.follow(seconds) { position = shown }
         if playing != running { playing = running }
         if stalled != buffering { stalled = buffering }
       }
@@ -480,11 +486,6 @@ struct PlayerScreen: View {
     showChrome()
   }
 
-  private var isSeeking: Bool {
-    if case .seek? = drag { return true }
-    return false
-  }
-
   private func togglePlay() {
     guard let player else { return }
     showChrome()
@@ -508,13 +509,27 @@ struct PlayerScreen: View {
   private func seek(to seconds: Double) {
     guard let player, duration > 0 else { return }
     let target = PlayerMath.clamp(seconds, 0, duration)
+    hold.seek(target)
     player.seek(
       to: CMTime(seconds: target, preferredTimescale: 600),
       toleranceBefore: .zero,
       toleranceAfter: .zero
     )
     position = target
+    releaseHold(target)
     updateNowPlaying()
+  }
+
+  /// A seek that never lands would leave the bar standing on a position the
+  /// picture is not on, so the hold expires and the clock takes the bar back.
+  private func releaseHold(_ target: Double) {
+    Task { @MainActor in
+      try? await Task.sleep(for: .seconds(2))
+      hold.expire(target)
+      if let now = player?.currentTime().seconds, now.isFinite, hold.follow(now) != nil {
+        position = now
+      }
+    }
   }
 
   private func commit(_ seconds: Double) {
