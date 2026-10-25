@@ -44,6 +44,11 @@ enum DisplayCorner {
     (1366, 18),
   ]
 
+  /// How far a display's short side may sit from a measured row and still take
+  /// that row's corner — the window that absorbs a variant sized a fraction off
+  /// the model it was measured on.
+  static let tolerance: CGFloat = 2
+
   /// A display whose longer side is no longer than this is cut square to the
   /// corner — the SE family, the 8 and the iPod touch — whatever its width.
   static let squareBelow: CGFloat = 700
@@ -56,12 +61,22 @@ enum DisplayCorner {
     let long = max(size.width, size.height)
     guard short > 0, long > 0 else { return 0 }
     guard long > squareBelow else { return 0 }
-    if let match = measured.first(where: { abs($0.short - short) <= 2 }) {
-      return match.radius
-    }
+    if let match = nearestMeasured(to: short) { return match.radius }
     // A display nobody measured: a phone rounds about a seventh of its width,
     // a pad far less, and neither reaches past what a hand-held device does.
     return short < squareBelow ? min(max(short * 0.14, 20), 62) : 18
+  }
+
+  /// The measured row closest to `short`, if one is within `tolerance`.
+  ///
+  /// The nearest row answers, never the first one inside the window: two
+  /// displays can be two points apart on their short side and turn differently
+  /// (428 is 53.33 where 430 is 55), so a first-match search handed the 430-wide
+  /// phone its neighbour's corner.
+  private static func nearestMeasured(to short: CGFloat) -> (short: CGFloat, radius: CGFloat)? {
+    let closest = measured.min { abs($0.short - short) < abs($1.short - short) }
+    guard let closest, abs(closest.short - short) <= tolerance else { return nil }
+    return closest
   }
 
   /// How far the glass has pulled in from the straight edge, `distance` from the

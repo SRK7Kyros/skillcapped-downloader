@@ -11,6 +11,14 @@ final class DisplayCornerTests: XCTestCase {
     XCTAssertEqual(DisplayCorner.radius(for: CGSize(width: 375, height: 812)), 44, "iPhone 13 mini")
   }
 
+  func testTwoDisplaysTwoPointsApartTakeTheirOwnCorner() {
+    // The lookup has to answer the nearest row: a first match inside the
+    // tolerance window handed the 430-wide iPhone 15 Plus its 428-wide
+    // neighbour's corner, which is two points narrower.
+    XCTAssertEqual(DisplayCorner.radius(for: CGSize(width: 428, height: 926)), 53.33, "iPhone 14 Plus")
+    XCTAssertEqual(DisplayCorner.radius(for: CGSize(width: 430, height: 932)), 55, "iPhone 15 Plus")
+  }
+
   func testAPadHasTheTighterCornerItHas() {
     for size in [CGSize(width: 744, height: 1133), CGSize(width: 834, height: 1194)] {
       XCTAssertEqual(DisplayCorner.radius(for: size), 18)
