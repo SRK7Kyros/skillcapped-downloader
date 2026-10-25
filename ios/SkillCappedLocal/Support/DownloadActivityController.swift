@@ -9,10 +9,18 @@ import UIKit
 /// system has already taken down, so the lock screen stays empty for the life of
 /// the process while the queue looks perfectly healthy from inside.
 enum ActivityLiveness {
+  /// `.active` and `.stale` are cards the system still draws; `.ended` and
+  /// `.dismissed` are ones it has taken down. A state Apple adds later counts as
+  /// dead, because adopting a card that cannot be drawn is the failure this rule
+  /// exists to prevent.
   static func isLive(_ state: ActivityState) -> Bool {
     switch state {
-    case .active, .stale: return true
-    case .ended, .dismissed: return false
+    case .active, .stale:
+      return true
+    case .ended, .dismissed:
+      return false
+    @unknown default:
+      return false
     }
   }
 }
