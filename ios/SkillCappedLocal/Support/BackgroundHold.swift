@@ -10,10 +10,27 @@ import Foundation
 /// it was awake.
 @MainActor
 final class BackgroundHold {
+  /// Ten seconds: retrying a refusal costs nothing, but retrying it on *every part*
+  /// — parts settle about eleven times a second while the app is awake — would fill
+  /// the journal with refusals and wipe the history that explains them. Nothing runs
+  /// while the app is suspended, so the wait cannot slow a sleeping queue down.
+  nonisolated static let defaultRetryAfter: TimeInterval = 10
+
   private var lease: BackgroundLease?
+  /// When the system last refused an assertion, so a refusal is retried once per
+  /// window rather than once per part.
+  private var refusedAt: Date?
+  private let retryAfter: TimeInterval
+  private let now: @MainActor () -> Date
   private let make: @MainActor (String) -> BackgroundLease
 
-  init(make: @escaping @MainActor (String) -> BackgroundLease = { BackgroundLease($0) }) {
+  init(
+    retryAfter: TimeInterval = BackgroundHold.defaultRetryAfter,
+    now: @escaping @MainActor () -> Date = { Date() },
+    make: @escaping @MainActor (String) -> BackgroundLease = { BackgroundLease($0) }
+  ) {
+    self.retryAfter = retryAfter
+    self.now = now
     self.make = make
   }
 
@@ -24,7 +41,11 @@ final class BackgroundHold {
   /// took back is replaced: the next part that settles is the moment to ask again.
   func renew(_ name: String) {
     guard !isHolding else { return }
+    if let refusedAt, now().timeIntervalSince(refusedAt) < retryAfter { return }
     lease = make(name)
+    // Only a refusal is worth waiting on; a lease that works clears the mark, so
+    // the next lesson takes its assertion at once.
+    refusedAt = isHolding ? nil : now()
   }
 
   func end() {

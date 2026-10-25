@@ -301,7 +301,10 @@ on the phone itself, into the same folders the desktop build writes.
   system wake. The expiry line in the journal now carries the grant's real length
   (`lease expired lesson after 31.4 s`), which is what tells a working renewal from
   an app whose background budget is spent: a grant lasting a second means renewing
-  buys nothing and the queue is back to what the system fetches on its own.
+  buys nothing and the queue is back to what the system fetches on its own. A
+  *refused* grant is retried once every ten seconds, never once per part — parts
+  settle about eleven times a second while the app is awake, and one journal line
+  per refusal would bury the reason it is there to explain.
 - **A part the system never hands back cannot stop the queue.** Every part a
   lesson awaits lives inside the one task `pump` runs, and `pump` refuses to start
   anything while that task is alive, so a wait that never returns was the whole
