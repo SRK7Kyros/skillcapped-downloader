@@ -284,6 +284,7 @@ actor SegmentDownloader {
 
     var next = 0
     var inFlight = 0
+    var peak = 0
     var announced = false
     var settles: [Int] = []
     let lessonStart = Date()
@@ -302,6 +303,7 @@ actor SegmentDownloader {
             throw DownloadError.cancelled
           }
           inFlight += 1
+          peak = max(peak, inFlight)
           group.addTask {
             let started = Date()
             let size = try await self.partSize(
@@ -309,7 +311,8 @@ actor SegmentDownloader {
             )
             return (index, size, Int(Date().timeIntervalSince(started) * 1000))
           }
-          guard !announced else { continue }
+        }
+        if !announced, inFlight > 0 {
           announced = true
           BackgroundJournal.shared.record("handed over \(inFlight) of \(missing.count) missing parts")
           // Said after the hand-over, never before it: this event releases the
@@ -330,7 +333,7 @@ actor SegmentDownloader {
 
     let elapsed = Int(Date().timeIntervalSince(lessonStart) * 1000)
     BackgroundJournal.shared.record(
-      "\(missing.count) parts in \(elapsed) ms (\(elapsed / missing.count) ms/part, first settles \(settles.map { String($0) }.joined(separator: "/")) ms)"
+      "\(missing.count) parts in \(elapsed) ms (\(elapsed / missing.count) ms/part, window \(peak) of \(Self.partWindow), first settles \(settles.map { String($0) }.joined(separator: "/")) ms)"
     )
     return bytes
   }
