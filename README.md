@@ -256,16 +256,43 @@ on the phone itself, into the same folders the desktop build writes.
   no file touched, so the rule is unit-tested. Deleting takes each file with its
   queue row and resume point, reports a per-file failure rather than claiming
   success, and drops the card only once nothing of the course is left.
-- **Downloading.** `SegmentDownloader` fetches the HLS parts four at a time under
-  one shared polite budget and merges them into one MPEG-TS file, which is what
-  lands in the library — nothing is re-encoded, because iOS cannot demux a
-  transport stream and the player reads it through the HLS stack instead (see
-  **Playback**). Files land in `Courses/<role>/<course>/`,
-  `Videos/<role>/<category>/` and `Commentaries/<role>/` under the desktop's
+- **Downloading.** `SegmentDownloader` fetches the HLS parts eight at a time and
+  merges them into one MPEG-TS file, which is what lands in the library — nothing
+  is re-encoded, because iOS cannot demux a transport stream and the player reads
+  it through the HLS stack instead (see **Playback**). Files land in
+  `Courses/<role>/<course>/`, `Videos/<role>/<category>/` and
+  `Commentaries/<role>/` under the desktop's
   `<title> [<uuid>] <quality>.<ext>` name — `.ts` from the phone, `.mp4` from the
   desktop — so a phone download and a desktop download of the same course merge
   instead of duplicating. One lesson runs at a time so the phone stays
   responsive, and the queue is persisted: a relaunch resumes it.
+- **It keeps going while the app is shut.** The parts are fetched by a
+  background `URLSession` (`Support/BackgroundTransfer.swift`), so the system
+  owns them and relaunches the app to hand each one over; a part's destination
+  rides in the task's own description, which is what lets a delivery arriving
+  after a relaunch land in the right job folder with no queue in memory. The
+  session hands over a window of `partWindow` parts and refills it as each one
+  settles — as many as keeps the session non-empty without leaving a lesson with
+  nothing to be woken for — and the merge that follows is held open by its own
+  background task, since once the last part has landed there are no more events
+  to wake the app for. `wake()` reopens the library from the saved folder without
+  a scene, so the next batch is handed over by whatever relaunch happens.
+  `Settings → Background queue` carries the run's **journal** (`BackgroundJournal`,
+  240 lines: launches, leases, part hand-overs and settles, ended lessons) and
+  **Copy logs** puts it on the clipboard, because a stall happens on a phone and
+  has to be readable there.
+- **A part the system never hands back cannot stop the queue.** Every part a
+  lesson awaits lives inside the one task `pump` runs, and `pump` refuses to start
+  anything while that task is alive, so a wait that never returns was the whole
+  queue stopped until the app was killed and reopened. `BackgroundTransfer.wait`
+  is bounded now (`Support/TransferWatchdog.swift`): at 120 s — longer than the
+  session's own 60 s request timeout, so a stalled request gets its retry first —
+  the task is cancelled and its waiter answered with a timeout, which the lesson
+  retries as a fresh hand-over, and after three the lesson fails so the queue
+  moves on. A session iOS invalidates answers every waiter and rebuilds itself
+  for the same reason. Returning to the app wakes the queue, and a launch with
+  Background App Refresh off says so in the journal, because that is the one
+  setting under which iOS never wakes the app for a transfer at all.
 - **Quality.** The order in `Settings` is the fallback ladder — 1080p, then 720p,
   then 4K by default — and the first rendition the CDN actually publishes wins.
   A label is understood in both vocabularies, the file-name one (`2160p`) and the
