@@ -29,4 +29,18 @@ final class DownloadActivityTests: XCTestCase {
     XCTAssertFalse(TransferHandover.keepsWorking([.paused]))
     XCTAssertFalse(TransferHandover.keepsWorking([.remuxing]))
   }
+
+  func testAPumpKeepsTheAppAwakeWhileALessonIsInFlight() {
+    XCTAssertTrue(TransferHandover.needsApp(running: true, states: [.downloading]))
+    XCTAssertTrue(TransferHandover.needsApp(running: true, states: [.ready]))
+  }
+
+  func testAPumpKeepsTheAppAwakeForALessonStillToStart() {
+    XCTAssertTrue(TransferHandover.needsApp(running: false, states: [.ready, .queued]))
+  }
+
+  func testAPumpWithNothingToDoLeavesTheAppAlone() {
+    XCTAssertFalse(TransferHandover.needsApp(running: false, states: []))
+    XCTAssertFalse(TransferHandover.needsApp(running: false, states: [.ready, .failed, .paused]))
+  }
 }

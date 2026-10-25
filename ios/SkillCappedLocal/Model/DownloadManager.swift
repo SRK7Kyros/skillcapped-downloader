@@ -17,6 +17,14 @@ enum TransferHandover {
   static func keepsWorking(_ states: [DownloadState]) -> Bool {
     states.contains { $0 == .queued || $0 == .downloading }
   }
+
+  /// Whether a pump that found the queue in this shape has work to do *in this
+  /// process* — a lesson already in flight, or one waiting to start. That is the
+  /// one condition under which the app is kept awake, because a window of parts
+  /// is refilled by code running here; a transfer itself survives suspension.
+  static func needsApp(running: Bool, states: [DownloadState]) -> Bool {
+    running || keepsWorking(states)
+  }
 }
 
 /// One lesson in the queue, persisted so a download survives a relaunch.
@@ -116,11 +124,19 @@ final class DownloadManager: ObservableObject {
   private var sample: (at: Date, bytes: Int64)?
 
   private let activity = DownloadActivityController()
-  /// Ends when this lesson stops running, however it stops.
-  private var lease: BackgroundLease?
-  /// Keeps the app awake only until a wake has handed the next batch to the
-  /// system: the transfers outlive it, the setup they need does not.
-  private var startLease: BackgroundLease?
+  /// The merge's lease: taken when the last part has landed, because from that
+  /// moment there is nothing of the system's left in the air to wake the app for.
+  private var mergeLease: BackgroundLease?
+  /// Keeps this process running for as long as a lesson is in flight.
+  ///
+  /// A transfer does not need it — the system owns those and they survive
+  /// suspension — but the *refill* does: each window of parts is handed over by
+  /// code running here, and iOS suspends an app that holds no assertion and then
+  /// delivers the settled parts in batches tens of seconds apart (measured: one
+  /// window per 42–114 s, against 88 ms per part while awake). So the lease spans
+  /// the lesson rather than its hand-over, and a lesson that outlives the ~30 s a
+  /// grant lasts takes the next one at the next part that settles.
+  private var lessonLease: BackgroundLease?
 
   init(root: URL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]) {
     self.root = root
@@ -214,10 +230,7 @@ final class DownloadManager: ObservableObject {
       runner?.cancel()
       runner = nil
       running = nil
-      lease?.end()
-      lease = nil
-      startLease?.end()
-      startLease = nil
+      releaseLeases()
     }
     BackgroundTransfer.shared.cancelLesson(uuid)
     guard let index = tasks.firstIndex(where: { $0.uuid == uuid }) else { return }
@@ -242,10 +255,7 @@ final class DownloadManager: ObservableObject {
       runner?.cancel()
       runner = nil
       running = nil
-      lease?.end()
-      lease = nil
-      startLease?.end()
-      startLease = nil
+      releaseLeases()
     }
     BackgroundTransfer.shared.cancelLesson(uuid)
     tasks.removeAll { $0.uuid == uuid }
@@ -329,6 +339,13 @@ final class DownloadManager: ObservableObject {
       BackgroundJournal.shared.record("pump: library not resolved")
       return
     }
+    // Whatever called this — a fresh start, a wake that found a lesson already in
+    // flight, or the user leaving the app — the refill loop runs in this process,
+    // so the assertion is taken here and held until the lesson ends (`apply`
+    // renews it, `finish`/`interrupt` release it).
+    if TransferHandover.needsApp(running: runner != nil, states: tasks.map(\.state)) {
+      holdAwake()
+    }
     guard runner == nil else { return }
     guard let next = tasks
       .filter({ $0.state == .queued })
@@ -339,15 +356,6 @@ final class DownloadManager: ObservableObject {
     let uuid = next.uuid
     guard let index = tasks.firstIndex(where: { $0.uuid == uuid }) else { return }
 
-    // A lesson begins with two reads over the ordinary session — the qualities it
-    // may ask for and its manifest — and at that moment nothing of the system's is
-    // in flight, so there is nothing to wake the app for. Between one lesson and
-    // the next that means the queue stops dead until the app is opened by hand:
-    // measured on a course, lesson one finished in the background and lesson two
-    // never asked for its manifest. The lease taken here carries the whole start —
-    // the reads and the hand-over of every part — and the queue's first progress
-    // event ends it once the system owns them (`apply`).
-    startLease = startLease ?? BackgroundLease("lesson")
     BackgroundJournal.shared.record("pump: start \(next.title)")
 
     tasks[index].state = .downloading
@@ -396,6 +404,11 @@ final class DownloadManager: ObservableObject {
   /// which is what keeps a course coming down without the app being opened — the
   /// transfers are the system's, so each relaunch can hand over the next batch.
   ///
+  /// It is also the path the scene changes take, in both directions: leaving the
+  /// foreground is when the assertion for the lesson in flight has to exist, and
+  /// coming back is the one moment the queue can be restarted by hand if the system
+  /// stopped waking the app for its transfers.
+  ///
   /// A saved folder that cannot be reached starts nothing: a lesson must never land
   /// in the app's own folder because a bookmark went stale while the library sits
   /// somewhere else. The store repairs the choice the next time the app is opened.
@@ -413,11 +426,28 @@ final class DownloadManager: ObservableObject {
   /// Merging the parts and moving the lesson into the library is ordinary work in
   /// this process, unlike the transfers, which the system owns. It is also the one
   /// moment a lesson can freeze half-done: once the last part has landed there are
-  /// no more session events to wake the app for, so the merge needs a lease of its
-  /// own, taken when it starts rather than with the whole lesson.
+  /// no more session events to wake the app for, so the merge takes a lease of its
+  /// own — a full grant from the moment it starts — in place of the lesson's.
   private func holdOpenForMerge() {
-    guard lease == nil else { return }
-    lease = BackgroundLease("merge")
+    guard mergeLease == nil else { return }
+    lessonLease?.end()
+    lessonLease = nil
+    mergeLease = BackgroundLease("merge")
+  }
+
+  /// Keep this process running while a lesson is in flight, or take a fresh grant
+  /// when the previous one has expired and the app is awake again.
+  private func holdAwake() {
+    guard lessonLease == nil else { return }
+    lessonLease = BackgroundLease("lesson")
+  }
+
+  /// Both assertions belong to the lesson that just stopped.
+  private func releaseLeases() {
+    mergeLease?.end()
+    mergeLease = nil
+    lessonLease?.end()
+    lessonLease = nil
   }
 
   /// The lock screen follows the queue, not the other way round: it is redrawn
@@ -446,30 +476,35 @@ final class DownloadManager: ObservableObject {
 
   /// Every transfer this process started has settled — a lesson's parts are all on
   /// disk — and the merge still has to run in this process. With nothing left in
-  /// the air the system has nothing to wake the app for, so the same lease the
-  /// wake takes covers the gap until the merge announces itself; the next part's
-  /// progress ends it.
+  /// the air the system has nothing to wake the app for, so this is the second
+  /// place the lesson's assertion is taken: a grant that expired over a long
+  /// lesson is renewed here, and the merge that follows replaces it with its own.
   func transferWentIdle() {
     guard runner != nil else { return }
     guard TransferHandover.keepsWorking(tasks.map(\.state)) else {
       BackgroundJournal.shared.record("batch idle: nothing left to continue")
       return
     }
+    guard lessonLease == nil, mergeLease == nil else { return }
     BackgroundJournal.shared.record("batch idle: lease taken")
-    startLease = startLease ?? BackgroundLease("hand-over")
+    holdAwake()
   }
 
   private func apply(_ progress: DownloadProgress, to uuid: String) {
     guard let index = tasks.firstIndex(where: { $0.uuid == uuid }) else { return }
     guard tasks[index].state == .downloading || tasks[index].state == .remuxing else { return }
-    startLease?.end()
-    startLease = nil
     tasks[index].segmentsDone = progress.segmentsDone
     tasks[index].segmentsTotal = progress.segmentsTotal
     tasks[index].bytes = progress.bytes
     tasks[index].state = progress.phase == .remuxing ? .remuxing : .downloading
     updateSpeed(bytes: progress.bytes)
-    if progress.phase == .remuxing { holdOpenForMerge() }
+    if progress.phase == .remuxing {
+      holdOpenForMerge()
+    } else {
+      // A lesson longer than one grant outlives its assertion; a part settling is
+      // a moment the app is awake anyway, so that is where the next one is taken.
+      holdAwake()
+    }
     refreshActivity()
   }
 
@@ -495,10 +530,7 @@ final class DownloadManager: ObservableObject {
       runner = nil
       bytesPerSecond = 0
     }
-    lease?.end()
-    lease = nil
-    startLease?.end()
-    startLease = nil
+    releaseLeases()
     if let index = tasks.firstIndex(where: { $0.uuid == uuid }) {
       tasks[index].state = .ready
       tasks[index].actualQuality = outcome.qualityLabel
@@ -521,10 +553,7 @@ final class DownloadManager: ObservableObject {
       runner = nil
       bytesPerSecond = 0
     }
-    lease?.end()
-    lease = nil
-    startLease?.end()
-    startLease = nil
+    releaseLeases()
     if let index = tasks.firstIndex(where: { $0.uuid == uuid }),
        tasks[index].state != .paused {
       tasks[index].state = reason == nil ? .queued : .failed

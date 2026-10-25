@@ -315,9 +315,10 @@ actor SegmentDownloader {
         if !announced, inFlight > 0 {
           announced = true
           BackgroundJournal.shared.record("handed over \(inFlight) of \(missing.count) missing parts")
-          // Said after the hand-over, never before it: this event releases the
-          // queue's start lease, and a lease released while the lesson was still
-          // being handed over is exactly when the app could be suspended mid-turn.
+          // Said after the hand-over, never before it: this is the queue's first
+          // progress event, and the moment it can hold the app open for the rest
+          // of the lesson — a lease taken before the hand-over would cover a
+          // window that does not exist yet.
           onProgress(DownloadProgress(phase: .downloading, segmentsDone: done, segmentsTotal: total, bytes: bytes))
         }
 

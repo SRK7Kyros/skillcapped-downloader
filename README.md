@@ -273,14 +273,26 @@ on the phone itself, into the same folders the desktop build writes.
   after a relaunch land in the right job folder with no queue in memory. The
   session hands over a window of `partWindow` parts and refills it as each one
   settles — as many as keeps the session non-empty without leaving a lesson with
-  nothing to be woken for — and the merge that follows is held open by its own
-  background task, since once the last part has landed there are no more events
-  to wake the app for. `wake()` reopens the library from the saved folder without
-  a scene, so the next batch is handed over by whatever relaunch happens.
+  nothing to be woken for. `wake()` reopens the library from the saved folder
+  without a scene, so the next batch is handed over by whatever relaunch happens.
   `Settings → Background queue` carries the run's **journal** (`BackgroundJournal`,
   240 lines: launches, leases, part hand-overs and settles, ended lessons) and
   **Copy logs** puts it on the clipboard, because a stall happens on a phone and
   has to be readable there.
+- **A lesson holds the app open, and that is what makes a background queue fast.**
+  The transfers are the system's and survive suspension, but the *refill* is not:
+  each window of parts is handed over by code running here, so once the app is
+  suspended the session runs that one window and iOS delivers the settled parts in
+  batches tens of seconds apart. Measured on a real queue: 88 ms per part while
+  the app was awake, and one window per 42–114 s while it was not — a 380-part
+  lesson that takes half a minute alive took the better part of an hour suspended,
+  which reads as a stall. So `DownloadManager` holds a background assertion
+  (`Support/BackgroundLease.swift`) for the *whole lesson* rather than for its
+  hand-over: it is taken in `pump`, which the scene changes call in both
+  directions, so leaving the app is the moment the lesson in flight gets one;
+  renewed at the next part that settles once the ~30 s grant expires; and handed
+  over to the merge's own assertion when the last part lands, since from then on
+  there is nothing of the system's left to wake the app for.
 - **A part the system never hands back cannot stop the queue.** Every part a
   lesson awaits lives inside the one task `pump` runs, and `pump` refuses to start
   anything while that task is alive, so a wait that never returns was the whole
