@@ -40,14 +40,21 @@ final class SettingsUITests: XCTestCase {
 
     copy.tap()
 
-    let says = XCTNSPredicateExpectation(
-      predicate: NSPredicate(format: "label == %@", "Copied"),
-      object: copy
-    )
-    XCTAssertEqual(
-      XCTWaiter().wait(for: [says], timeout: 5),
-      .completed,
-      "the button should say what it did — it says \(copy.label)\n\(app.debugDescription)"
+    // The confirmation is looked for as a fresh query, polled: reading `label`
+    // off the element failed the whole test when one accessibility snapshot
+    // landed while the row was re-rendering, whereas `exists` answers false.
+    // The label reverts after two seconds, so the poll has to be quick.
+    let copiedLabel = app.buttons["Copied"]
+    var said = false
+    var polls = 0
+    while !said && polls < 20 {
+      said = copiedLabel.exists
+      if !said { Thread.sleep(forTimeInterval: 0.2) }
+      polls += 1
+    }
+    XCTAssertTrue(
+      said,
+      "the button should say what it did for a moment:\n\(app.debugDescription)"
     )
 
     let shot = XCTAttachment(screenshot: app.screenshot())
