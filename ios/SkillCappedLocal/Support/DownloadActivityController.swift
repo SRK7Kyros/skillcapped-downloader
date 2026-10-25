@@ -9,7 +9,7 @@ import UIKit
 /// system has already taken down, so the lock screen stays empty for the life of
 /// the process while the queue looks perfectly healthy from inside.
 enum ActivityLiveness {
-  static func isLive(_ state: Activity<DownloadActivityAttributes>.ActivityState) -> Bool {
+  static func isLive(_ state: ActivityState) -> Bool {
     switch state {
     case .active, .stale: return true
     case .ended, .dismissed: return false
