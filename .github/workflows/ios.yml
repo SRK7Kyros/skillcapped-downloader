@@ -18,10 +18,21 @@ concurrency:
 
 jobs:
   build:
-    runs-on: macos-15
+    # The player prefers iOS 26's own glass (`glassEffect`), which only exists in
+    # the iOS 26 SDK — macos-15 tops out at Xcode 16.4, whose SDK has no such
+    # symbol at all, so no availability check could rescue it there.
+    runs-on: macos-26
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
+
+      - name: Use the newest Xcode
+        run: |
+          pick=$(ls -d /Applications/Xcode_*.app | grep -vi beta | sort -V | tail -1)
+          echo "using $pick"
+          sudo xcode-select -s "$pick"
+          xcodebuild -version
+          xcodebuild -showsdks | grep -i iphonesimulator || true
 
       - name: Resolve version
         id: version
@@ -58,7 +69,7 @@ jobs:
 
       - name: Unit and UI tests
         working-directory: ios
-        timeout-minutes: 25
+        timeout-minutes: 30
         run: |
           set +e
           xcodebuild test \
