@@ -144,6 +144,21 @@ final class PlayerChromeUITests: XCTestCase {
     add(landscape)
   }
 
+  /// A hold is a speed control, not a tap: pressing the picture must not be
+  /// read as the tap that toggles the chrome, or a viewer speeding a lesson up
+  /// would hide their own transport.
+  func testHoldingThePictureDoesNotToggleTheChrome() {
+    let app = openPlayer()
+    showTransport(in: app)
+
+    app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).press(forDuration: 1.2)
+
+    XCTAssertTrue(
+      app.buttons["Back 10 seconds"].waitForExistence(timeout: 5),
+      "the transport should still be on screen after a hold; buttons on screen: \(buttonsOnScreen(in: app))"
+    )
+  }
+
   private func openPlayer() -> XCUIApplication {
     let app = XCUIApplication()
     app.launchArguments = ["-demoLibrary"]

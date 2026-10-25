@@ -29,6 +29,25 @@ final class PlayerGesturesTests: XCTestCase {
     XCTAssertEqual(burst.tap(backward: true, at: start.addingTimeInterval(0.4)), -10)
   }
 
+  func testASecondReleaseRestoresNothing() {
+    var speed = HoldToSpeed()
+    _ = speed.begin(from: 1.25)
+    XCTAssertEqual(speed.end(), 1.25)
+    XCTAssertNil(speed.end())
+  }
+
+  func testASecondBeginWhileHeldKeepsTheFirstRatesWord() {
+    var speed = HoldToSpeed()
+    _ = speed.begin(from: 1.5)
+    XCTAssertEqual(speed.begin(from: 2), 2)
+    XCTAssertEqual(speed.end(), 1.5)
+  }
+
+  func testTheLabelSaysTheFactor() {
+    XCTAssertEqual(PlayerHUD.speed.label, "2×")
+    XCTAssertEqual(PlayerHUD.speed.glyph, "speedometer")
+  }
+
   func testResetForgetsTheBurst() {
     var burst = SkipBurst()
     _ = burst.tap(backward: false, at: start)
@@ -98,4 +117,25 @@ final class PlayerGesturesTests: XCTestCase {
     XCTAssertEqual(PlayerMath.clock(-3), "--:--")
     XCTAssertEqual(PlayerMath.clock(400_000), "--:--")
   }
+
+  func testAHoldRunsAtDoubleSpeedAndHandsBackTheRateItInterrupted() {
+    var speed = HoldToSpeed()
+    XCTAssertEqual(speed.begin(from: 1), 2)
+    XCTAssertTrue(speed.isHolding)
+    XCTAssertEqual(speed.end(), 1)
+    XCTAssertFalse(speed.isHolding)
+  }
+
+  func testAHoldOnAPausedLessonHandsThePauseBack() {
+    var speed = HoldToSpeed()
+    XCTAssertEqual(speed.begin(from: 0), 2)
+    XCTAssertEqual(speed.end(), 0)
+  }
+
+  func testAHoldFromAChosenRateKeepsThatRate() {
+    var speed = HoldToSpeed()
+    XCTAssertEqual(speed.begin(from: 1.5), 2)
+    XCTAssertEqual(speed.end(), 1.5)
+  }
 }
+

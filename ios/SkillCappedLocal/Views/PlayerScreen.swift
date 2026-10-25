@@ -43,6 +43,8 @@ struct PlayerScreen: View {
   @State private var hud: PlayerHUD?
   @State private var hudTask: Task<Void, Never>?
   @State private var burst = SkipBurst()
+  @State private var speed = HoldToSpeed()
+  @State private var pressed = false
   @State private var drag: Drag?
   @StateObject private var pictureInPicture = PictureInPicture()
 
@@ -67,6 +69,10 @@ struct PlayerScreen: View {
   }
 
   private static let rates: [Float] = [1, 1.25, 1.5, 2]
+  /// How long a finger has to rest on the picture before it plays at double
+  /// speed. Short enough to feel like a gesture, long enough that a slow tap is
+  /// still a tap.
+  private static let holdToSpeedAfter: TimeInterval = 0.4
 
   init(lesson: Lesson) {
     self.lesson = lesson
@@ -186,8 +192,8 @@ struct PlayerScreen: View {
   }
 
   /// One tap toggles the chrome, two on a side skip, a drag scrubs or moves a
-  /// level. Exclusive taps, not two recognisers: with two, the first tap of a
-  /// double tap toggles the chrome as well.
+  /// level, a hold plays at double speed. Exclusive taps, not two recognisers:
+  /// with two, the first tap of a double tap toggles the chrome as well.
   private func gestures(size: CGSize) -> some View {
     Color.clear
       .contentShape(Rectangle())
@@ -208,6 +214,18 @@ struct PlayerScreen: View {
               if chrome { showChrome() }
             }
           }
+      )
+      .onLongPressGesture(
+        minimumDuration: Self.holdToSpeedAfter,
+        maximumDistance: 22,
+        pressing: { down in
+          // A press that ends without reaching the duration never sped anything
+          // up, and a hold that is dragged away is cancelled rather than ended —
+          // both arrive here as the press letting go.
+          pressed = down
+          if !down { endHold() }
+        },
+        perform: { beginHold() }
       )
       .simultaneousGesture(dragGesture(size: size))
       .simultaneousGesture(magnifyGesture(size: size))
@@ -259,6 +277,9 @@ struct PlayerScreen: View {
       .onChanged { value in
         guard !zooming else { return }
         if drag == nil {
+          // A finger that starts moving is scrubbing or changing a level, not
+          // holding for speed, even when the hold had already begun.
+          endHold()
           drag = startDrag(value, size: size)
           showChrome()
         }
@@ -377,7 +398,7 @@ struct PlayerScreen: View {
         album: current.quality,
         duration: duration,
         position: position,
-        rate: rate,
+        rate: liveRate,
         playing: playing
       ),
       artwork: artwork
@@ -415,6 +436,9 @@ struct PlayerScreen: View {
     zoomOffset = .zero
     zoomBase = nil
     zooming = false
+    burst.reset()
+    speed = HoldToSpeed()
+    drag = nil
     loadArtwork()
 
     let download = CloudFile.needsDownload(lesson.url)
@@ -547,9 +571,31 @@ struct PlayerScreen: View {
   private func cycleRate() {
     let index = Self.rates.firstIndex(of: rate) ?? 0
     rate = Self.rates[(index + 1) % Self.rates.count]
-    if let player, player.rate > 0 { player.rate = rate }
+    if let player, player.rate > 0, !speed.isHolding { player.rate = rate }
     updateNowPlaying()
     showChrome()
+  }
+
+  /// The rate the picture is running at, which is double while a finger holds it.
+  private var liveRate: Float {
+    speed.isHolding ? HoldToSpeed.factor : rate
+  }
+
+  private func beginHold() {
+    // `perform` can arrive a moment after the finger has already gone; the
+    // player must never be left running at double speed with nothing holding it.
+    guard pressed, let player, player.currentItem != nil, drag == nil else { return }
+    player.rate = speed.begin(from: player.rate)
+    playing = true
+    show(.speed)
+    updateNowPlaying()
+  }
+
+  private func endHold() {
+    guard let player, let back = speed.end() else { return }
+    player.rate = back
+    playing = back > 0
+    updateNowPlaying()
   }
 
   private func completed() {

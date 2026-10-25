@@ -84,6 +84,8 @@ enum PlayerHUD: Equatable {
   case volume(Double)
   /// The playhead a drag is aiming at.
   case time(Double)
+  /// Double speed, for as long as the picture is held.
+  case speed
 
   var glyph: String {
     switch self {
@@ -91,6 +93,7 @@ enum PlayerHUD: Equatable {
     case .brightness: return "sun.max.fill"
     case .volume: return "speaker.wave.2.fill"
     case .time: return "timer"
+    case .speed: return "speedometer"
     }
   }
 
@@ -105,6 +108,8 @@ enum PlayerHUD: Equatable {
       return "\(Int((level * 100).rounded()))%"
     case let .time(seconds):
       return PlayerMath.clock(seconds)
+    case .speed:
+      return "\(Int(HoldToSpeed.factor))×"
     }
   }
 }

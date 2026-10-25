@@ -37,6 +37,32 @@ struct SkipBurst: Equatable {
   }
 }
 
+/// Holding the picture runs it at double speed for as long as the finger stays
+/// down, then hands back the rate it interrupted — including a pause, so holding
+/// a stopped lesson previews it and lets go of it again.
+struct HoldToSpeed: Equatable {
+  static let factor: Float = 2
+
+  /// The rate in force before the hold, or `nil` when nothing is held.
+  private(set) var resuming: Float?
+
+  var isHolding: Bool { resuming != nil }
+
+  /// The rate to run while the picture is held. A second hold that starts before
+  /// the first is released keeps the rate the first one remembers.
+  mutating func begin(from rate: Float) -> Float {
+    if resuming == nil { resuming = rate }
+    return Self.factor
+  }
+
+  /// The rate to go back to, once: a release with nothing held answers `nil` and
+  /// a second release cannot restore an older rate again.
+  mutating func end() -> Float? {
+    defer { resuming = nil }
+    return resuming
+  }
+}
+
 /// The maths behind the player's drags and its clock, kept out of the view so it
 /// can be pinned by a test rather than by eye.
 enum PlayerMath {
