@@ -59,8 +59,8 @@ struct DownloadTask: Codable, Identifiable, Hashable {
 ///
 /// The parts are fetched by `BackgroundTransfer`, so a lesson keeps arriving
 /// while the app is suspended, and the system wakes the app to hand each one
-/// over. `wake()` is that path — a relaunch in the background has no scene to
-/// start the queue from.
+/// over. `wake()` is that path: a relaunch in the background has no scene, so it
+/// resolves the library from what was saved and starts the next lesson itself.
 @MainActor
 final class DownloadManager: ObservableObject {
   static let shared = DownloadManager()
@@ -79,8 +79,21 @@ final class DownloadManager: ObservableObject {
   /// Where a finished lesson is written. Changing it only affects downloads
   /// started afterwards — one already running keeps the folder it began in.
   var root: URL {
-    didSet { pump() }
+    didSet {
+      rootIsResolved = true
+      pump()
+    }
   }
+  /// True once a scene — or a background wake — has said where the library is.
+  /// Until then `root` is only the app's own folder, which is where a lesson must
+  /// not be written when the user keeps the library somewhere else.
+  private var rootIsResolved = false
+  /// The app's own folder: what `root` starts as, and what a library with nothing
+  /// saved resolves to.
+  private let ownRoot: URL
+  /// A folder resolved with no scene, kept alive for as long as its security scope
+  /// is what allows the writes.
+  private var adopted: LibraryRoot?
   private let scratch: URL
   /// True while the library is moving: no lesson starts, so nothing is written
   /// into a folder that is being carried elsewhere.
@@ -93,9 +106,13 @@ final class DownloadManager: ObservableObject {
   private let activity = DownloadActivityController()
   /// Ends when this lesson stops running, however it stops.
   private var lease: BackgroundLease?
+  /// Keeps the app awake only until a wake has handed the next batch to the
+  /// system: the transfers outlive it, the setup they need does not.
+  private var startLease: BackgroundLease?
 
   init(root: URL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]) {
     self.root = root
+    ownRoot = root
     let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first
       ?? URL(fileURLWithPath: NSTemporaryDirectory())
     scratch = caches.appendingPathComponent("downloads", isDirectory: true)
@@ -286,6 +303,10 @@ final class DownloadManager: ObservableObject {
 
   private func pump() {
     guard !held else { return }
+    // Nothing starts until the library is known: `root` begins as the app's own
+    // folder, so a queue that ran before the choice was read would write a lesson
+    // somewhere the user does not keep the library.
+    guard rootIsResolved else { return }
     guard runner == nil else { return }
     guard let next = tasks
       .filter({ $0.state == .queued })
@@ -336,14 +357,28 @@ final class DownloadManager: ObservableObject {
   }
 
   /// The system woke the app because a background transfer finished: the part is
-  /// already on disk, so the lock screen is told the queue moved on.
+  /// already on disk, so the queue is moved on. When the app was relaunched purely
+  /// to take delivery, the lesson is started again from the folder the store saved,
+  /// which is what keeps a course coming down without the app being opened — the
+  /// transfers are the system's, so each relaunch can hand over the next batch.
   ///
-  /// Nothing is started from here on purpose. A relaunch in the background has no
-  /// scene, so the library folder the queue writes into has not been resolved yet
-  /// — beginning a lesson would put it in the app's own Documents instead of where
-  /// the user keeps the library. The queue starts itself the next time the app is
-  /// opened; the parts already fetched are skipped.
+  /// A saved folder that cannot be reached starts nothing: a lesson must never land
+  /// in the app's own folder because a bookmark went stale while the library sits
+  /// somewhere else. The store repairs the choice the next time the app is opened.
   func wake() {
+    if !rootIsResolved, let saved = LibraryRoot.resolve(documents: ownRoot) {
+      adopted?.stop()
+      adopted = saved
+      root = saved.url
+    }
+    // The system only promises the app this window to take delivery, and the wake
+    // that starts a lesson spends it on two network reads before the first part is
+    // handed over. Without the lease that setup can be suspended mid-flight, with
+    // nothing left to wake it again.
+    if rootIsResolved, runner == nil, tasks.contains(where: { $0.state == .queued }) {
+      startLease = startLease ?? BackgroundLease("wake")
+    }
+    pump()
     refreshActivity()
   }
 
@@ -370,6 +405,8 @@ final class DownloadManager: ObservableObject {
   private func apply(_ progress: DownloadProgress, to uuid: String) {
     guard let index = tasks.firstIndex(where: { $0.uuid == uuid }) else { return }
     guard tasks[index].state == .downloading || tasks[index].state == .remuxing else { return }
+    startLease?.end()
+    startLease = nil
     tasks[index].segmentsDone = progress.segmentsDone
     tasks[index].segmentsTotal = progress.segmentsTotal
     tasks[index].bytes = progress.bytes
@@ -403,6 +440,8 @@ final class DownloadManager: ObservableObject {
     }
     lease?.end()
     lease = nil
+    startLease?.end()
+    startLease = nil
     if let index = tasks.firstIndex(where: { $0.uuid == uuid }) {
       tasks[index].state = .ready
       tasks[index].actualQuality = outcome.qualityLabel
@@ -426,6 +465,8 @@ final class DownloadManager: ObservableObject {
     }
     lease?.end()
     lease = nil
+    startLease?.end()
+    startLease = nil
     if let index = tasks.firstIndex(where: { $0.uuid == uuid }),
        tasks[index].state != .paused {
       tasks[index].state = reason == nil ? .queued : .failed

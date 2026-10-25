@@ -26,8 +26,8 @@ final class LibraryStore: ObservableObject {
   /// and no posters.
   private var catalogue = CatalogIndex.empty
 
-  private static let bookmarkKey = "library.bookmark"
-  private static let pathKey = "library.relativePath"
+  /// The folder is remembered under `LibraryRoot`'s keys, so the queue can answer
+  /// the same question with no store and no scene.
   private let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
   private var scoped: URL?
 
@@ -187,15 +187,15 @@ final class LibraryStore: ObservableObject {
 
   private func apply(_ pick: LibraryPick, previous: URL, previousScoped: URL?) {
     if pick.ownFolder {
-      UserDefaults.standard.set("", forKey: Self.pathKey)
-      UserDefaults.standard.removeObject(forKey: Self.bookmarkKey)
+      UserDefaults.standard.set("", forKey: LibraryRoot.pathKey)
+      UserDefaults.standard.removeObject(forKey: LibraryRoot.bookmarkKey)
       adoptOwnFolder()
       moveLibrary(from: previous, to: pick.target, releasing: previousScoped)
       return
     }
     if pick.insideDocuments {
-      UserDefaults.standard.set(relativePath(of: pick.target), forKey: Self.pathKey)
-      UserDefaults.standard.removeObject(forKey: Self.bookmarkKey)
+      UserDefaults.standard.set(relativePath(of: pick.target), forKey: LibraryRoot.pathKey)
+      UserDefaults.standard.removeObject(forKey: LibraryRoot.bookmarkKey)
     } else {
       guard let bookmark = pick.bookmark else {
         if pick.scopeStarted { pick.target.stopAccessingSecurityScopedResource() }
@@ -203,8 +203,8 @@ final class LibraryStore: ObservableObject {
           ?? "That folder could not be remembered. Copy it into the app instead: Files › On My iPhone › SkillCapped Local."
         return
       }
-      UserDefaults.standard.set(bookmark, forKey: Self.bookmarkKey)
-      UserDefaults.standard.removeObject(forKey: Self.pathKey)
+      UserDefaults.standard.set(bookmark, forKey: LibraryRoot.bookmarkKey)
+      UserDefaults.standard.removeObject(forKey: LibraryRoot.pathKey)
     }
     attach(
       pick.target,
@@ -263,8 +263,8 @@ final class LibraryStore: ObservableObject {
     // back at the folder the user just walked away from.
     preparingToken = nil
     preparing = nil
-    UserDefaults.standard.removeObject(forKey: Self.bookmarkKey)
-    UserDefaults.standard.removeObject(forKey: Self.pathKey)
+    UserDefaults.standard.removeObject(forKey: LibraryRoot.bookmarkKey)
+    UserDefaults.standard.removeObject(forKey: LibraryRoot.pathKey)
     scoped?.stopAccessingSecurityScopedResource()
     scoped = nil
     message = nil
@@ -298,14 +298,14 @@ final class LibraryStore: ObservableObject {
   }
 
   private func attachSavedPath() -> Bool {
-    guard let relative = UserDefaults.standard.string(forKey: Self.pathKey) else { return false }
+    guard let relative = UserDefaults.standard.string(forKey: LibraryRoot.pathKey) else { return false }
     guard !relative.isEmpty else {
       adoptOwnFolder()
       return true
     }
     let url = documents.appendingPathComponent(relative, isDirectory: true)
     guard FileManager.default.isReadableFile(atPath: url.path) else {
-      UserDefaults.standard.removeObject(forKey: Self.pathKey)
+      UserDefaults.standard.removeObject(forKey: LibraryRoot.pathKey)
       return false
     }
     attach(url, persist: false)
@@ -313,10 +313,10 @@ final class LibraryStore: ObservableObject {
   }
 
   private func attachBookmark() -> Bool {
-    guard let data = UserDefaults.standard.data(forKey: Self.bookmarkKey) else { return false }
+    guard let data = UserDefaults.standard.data(forKey: LibraryRoot.bookmarkKey) else { return false }
     var stale = false
     guard let url = try? URL(resolvingBookmarkData: data, options: [], relativeTo: nil, bookmarkDataIsStale: &stale) else {
-      UserDefaults.standard.removeObject(forKey: Self.bookmarkKey)
+      UserDefaults.standard.removeObject(forKey: LibraryRoot.bookmarkKey)
       return false
     }
     attach(url, persist: stale)
@@ -335,7 +335,7 @@ final class LibraryStore: ObservableObject {
     rootName = displayName(for: url)
     isCloudRoot = isCloud ?? ((try? url.resourceValues(forKeys: [.isUbiquitousItemKey]))?.isUbiquitousItem == true)
     if persist, let bookmark = try? url.bookmarkData(options: [], includingResourceValuesForKeys: nil, relativeTo: nil) {
-      UserDefaults.standard.set(bookmark, forKey: Self.bookmarkKey)
+      UserDefaults.standard.set(bookmark, forKey: LibraryRoot.bookmarkKey)
     }
     if !started, !FileManager.default.isReadableFile(atPath: url.path) {
       message = "This folder is no longer available. Add it again through the library sheet."
