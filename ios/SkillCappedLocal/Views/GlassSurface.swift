@@ -71,6 +71,11 @@ struct GlassSurface<S: InsettableShape>: ViewModifier {
         )
       }
       .overlay {
+        // The inner edge of the slab: a hair of light just inside the rim is what
+        // reads as the thickness of glass rather than a flat outline.
+        shape.inset(by: rimWidth).strokeBorder(Color.white.opacity(0.12), lineWidth: 0.6)
+      }
+      .overlay {
         // A dark hairline outside the rim, which is what gives a sheet of glass
         // an edge of its own against a bright frame.
         shape.strokeBorder(Color.black.opacity(0.42), lineWidth: 0.5)

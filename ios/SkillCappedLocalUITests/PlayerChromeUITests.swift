@@ -2,11 +2,12 @@ import XCTest
 
 /// The player's transport has two shapes and one order. A wide window keeps the
 /// whole of it in a single row — skip back, play, skip forward, the timeline, the
-/// speed, the queue's neighbours — while a portrait phone floats the three
-/// least-used controls above the bar, which is what buys the timeline the width
-/// to show both readouts. Picture in Picture is alone in the top-right corner in
-/// both shapes. The demo library's lessons are empty files, which is enough: the
-/// chrome is drawn as soon as the player exists.
+/// speed, the queue's neighbours and the queue itself — while a portrait phone
+/// floats the four least-used controls above the bar, which is what buys the
+/// timeline the width to show both readouts. The fit control and Picture in
+/// Picture sit in the top-right corner in both shapes. The demo library's lessons
+/// are empty files, which is enough: the chrome is drawn as soon as the player
+/// exists.
 final class PlayerChromeUITests: XCTestCase {
   func testPortraitFloatsTheRateAndTheQueueAboveTheBar() {
     let app = openPlayer()
@@ -17,6 +18,7 @@ final class PlayerChromeUITests: XCTestCase {
       app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Playback speed")).firstMatch,
       app.buttons["Previous lesson"],
       app.buttons["Next lesson"],
+      app.buttons["Queue"],
     ]
 
     for control in bar + floating {
@@ -48,7 +50,7 @@ final class PlayerChromeUITests: XCTestCase {
     )
 
     let order = floating.map { $0.frame.midX }
-    XCTAssertEqual(order, order.sorted(), "the floating band keeps the row's order: speed, previous, next")
+    XCTAssertEqual(order, order.sorted(), "the floating band keeps the row's order: speed, previous, next, queue")
 
     XCTAssertTrue(app.staticTexts["player.elapsed"].exists, "the elapsed time should be in the bar")
     XCTAssertTrue(app.staticTexts["player.remaining"].exists, "with the time left beside it")
@@ -79,6 +81,7 @@ final class PlayerChromeUITests: XCTestCase {
       ),
       (name: "previous", element: app.buttons["Previous lesson"]),
       (name: "next", element: app.buttons["Next lesson"]),
+      (name: "queue", element: app.buttons["Queue"]),
     ]
 
     for control in controls {
@@ -133,7 +136,7 @@ final class PlayerChromeUITests: XCTestCase {
     }
 
     let leading = app.buttons["Back 10 seconds"].frame.minX - screen.minX
-    let trailing = screen.maxX - app.buttons["Next lesson"].frame.maxX
+    let trailing = screen.maxX - app.buttons["Queue"].frame.maxX
     XCTAssertEqual(
       leading,
       trailing,
@@ -162,6 +165,79 @@ final class PlayerChromeUITests: XCTestCase {
       app.buttons["Back 10 seconds"].waitForExistence(timeout: 5),
       "the transport should still be on screen after a hold; buttons on screen: \(buttonsOnScreen(in: app))"
     )
+  }
+
+  /// The queue is reachable without leaving the player, and it is a list of
+  /// lessons rather than a set of arrows: a row carries the lesson's name, how
+  /// long it runs and how much of it is behind the viewer, and choosing one plays
+  /// it and puts the drawer away.
+  func testTheQueueDrawerListsTheLessonsAndPlaysOne() {
+    let app = openPlayer()
+    showTransport(in: app)
+
+    let queue = app.buttons["Queue"]
+    XCTAssertTrue(
+      queue.waitForExistence(timeout: 5),
+      "the transport should carry the queue; buttons on screen: \(buttonsOnScreen(in: app))"
+    )
+    guard queue.exists else { return }
+    queue.tap()
+
+    let titles = ["What's Next", "Farming Fundamentals"]
+    let playing = titles.first { app.staticTexts[$0].exists } ?? titles[0]
+    let other = titles.first { $0 != playing } ?? titles[1]
+
+    XCTAssertTrue(
+      app.buttons[other].waitForExistence(timeout: 5),
+      "the drawer should list the lesson that is not on screen; buttons on screen: \(buttonsOnScreen(in: app))"
+    )
+
+    for title in titles {
+      let value = app.buttons[title].value as? String ?? ""
+      XCTAssertTrue(
+        value.contains(":"),
+        "each row should carry how long its lesson runs; \(title) reads \"\(value)\""
+      )
+    }
+
+    app.buttons[other].tap()
+
+    XCTAssertTrue(
+      app.staticTexts[other].waitForExistence(timeout: 20),
+      "choosing a lesson should play it; buttons on screen: \(buttonsOnScreen(in: app))"
+    )
+    XCTAssertFalse(
+      app.buttons[playing].exists,
+      "…and put the drawer away — the row that was on screen should be gone"
+    )
+  }
+
+  /// The picture fills the window one of two ways, and the control says which one
+  /// it will move to rather than which one is on.
+  func testTheFitControlTogglesWhatItSays() {
+    let app = openPlayer()
+    showTransport(in: app)
+
+    let toFill = app.buttons["Fill the screen"]
+    let toFit = app.buttons["Fit the whole video"]
+    XCTAssertTrue(
+      toFill.waitForExistence(timeout: 5) || toFit.waitForExistence(timeout: 5),
+      "the header should offer the fit control; buttons on screen: \(buttonsOnScreen(in: app))"
+    )
+
+    if toFill.exists {
+      toFill.tap()
+      XCTAssertTrue(
+        toFit.waitForExistence(timeout: 5),
+        "filling the screen should leave the control offering the whole video"
+      )
+    } else if toFit.exists {
+      toFit.tap()
+      XCTAssertTrue(
+        toFill.waitForExistence(timeout: 5),
+        "fitting the whole video should leave the control offering the fill"
+      )
+    }
   }
 
   private func openPlayer() -> XCUIApplication {

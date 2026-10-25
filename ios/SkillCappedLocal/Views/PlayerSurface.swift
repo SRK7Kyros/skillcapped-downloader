@@ -8,12 +8,13 @@ import UIKit
 struct PlayerSurface: UIViewRepresentable {
   let player: AVPlayer
   let pictureInPicture: PictureInPicture
+  let fit: VideoFit
 
   func makeUIView(context: Context) -> LayerHostView {
     let view = LayerHostView()
     view.backgroundColor = .black
     view.playerLayer.player = player
-    view.playerLayer.videoGravity = .resizeAspect
+    view.playerLayer.videoGravity = fit.gravity
     pictureInPicture.attach(view.playerLayer)
     return view
   }
@@ -22,6 +23,9 @@ struct PlayerSurface: UIViewRepresentable {
     if view.playerLayer.player !== player {
       view.playerLayer.player = player
       pictureInPicture.attach(view.playerLayer)
+    }
+    if view.playerLayer.videoGravity != fit.gravity {
+      view.playerLayer.videoGravity = fit.gravity
     }
   }
 

@@ -75,6 +75,159 @@ struct PlayerScrubber: View {
   }
 }
 
+/// The lessons the player can reach without leaving it: the queue it was opened
+/// from, each with the picture it is known by, how far into it the viewer got and
+/// how long it runs. Tapping one plays it, so a course can be worked through from
+/// inside the player instead of backing out to the list between lessons.
+struct PlayerQueueDrawer: View {
+  let queue: [Lesson]
+  let current: Lesson
+  /// Where the picture on screen has got to, for the row of the lesson playing.
+  /// The store only learns a position every few seconds, so a row drawn from it
+  /// alone would sit still while the lesson ran.
+  let liveFraction: Double?
+  let window: CGSize
+  let select: (Lesson) -> Void
+
+  @EnvironmentObject private var progress: ProgressStore
+
+  /// As wide as the transport's own sheet allows on the narrowest phone, and no
+  /// wider than a comfortable reading measure on a phone on its side.
+  private var width: CGFloat { min(340, max(220, window.width - 56)) }
+
+  /// Tall enough for the lessons a course has, never so tall that the drawer
+  /// would climb into the header of a phone on its side.
+  private var listHeight: CGFloat {
+    let cap = min(320, max(150, window.height * 0.55))
+    return min(cap, CGFloat(queue.count) * PlayerQueueRow.height)
+  }
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 0) {
+      HStack(spacing: 8) {
+        Text("Queue")
+          .font(.system(size: 12, weight: .heavy))
+          .foregroundStyle(.white)
+        if let place = PlayerQueueSummary.position(of: current.id, in: queue) {
+          Text(place)
+            .font(.system(size: 11, weight: .semibold, design: .rounded).monospacedDigit())
+            .foregroundStyle(.white.opacity(0.6))
+        }
+        Spacer(minLength: 0)
+      }
+      .padding(.horizontal, 14)
+      .padding(.top, 12)
+      .padding(.bottom, 6)
+
+      ScrollView {
+        LazyVStack(spacing: 2) {
+          ForEach(queue) { lesson in
+            PlayerQueueRow(
+              lesson: lesson,
+              playing: lesson.id == current.id,
+              watched: lesson.id == current.id ? (liveFraction ?? stored(lesson)) : stored(lesson),
+              action: { select(lesson) }
+            )
+          }
+        }
+        .padding(.horizontal, 6)
+        .padding(.bottom, 8)
+      }
+      .frame(height: listHeight)
+      .scrollIndicators(.hidden)
+    }
+    .frame(width: width)
+    .glass(
+      RoundedRectangle(cornerRadius: 26, style: .continuous),
+      tint: 0.68,
+      rim: 0.72,
+      rimWidth: 1.2,
+      lift: 0.5
+    )
+  }
+
+  private func stored(_ lesson: Lesson) -> Double? {
+    progress.fraction(for: lesson.progressKey)
+  }
+}
+
+/// One lesson in the queue drawer: its picture, its name, a bar for how much of
+/// it is behind the viewer, and how long it runs.
+struct PlayerQueueRow: View {
+  /// The height a row is drawn at, so the drawer can size itself to the number of
+  /// lessons in it instead of being a fixed sheet with a band of empty glass.
+  static let height: CGFloat = 66
+
+  let lesson: Lesson
+  let playing: Bool
+  let watched: Double?
+  let action: () -> Void
+
+  var body: some View {
+    Button(action: action) {
+      HStack(spacing: 10) {
+        PosterArt(
+          url: lesson.url,
+          seed: lesson.id,
+          remote: lesson.posterURL,
+          window: PosterShape.landscape,
+          width: 68,
+          targetWidth: 200,
+          glyphSize: 15
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+
+        VStack(alignment: .leading, spacing: 3) {
+          Text(lesson.title)
+            .font(.system(size: 12.5, weight: playing ? .semibold : .medium))
+            .foregroundStyle(.white.opacity(playing ? 1 : 0.88))
+            .lineLimit(2)
+            .multilineTextAlignment(.leading)
+            .fixedSize(horizontal: false, vertical: true)
+
+          track
+
+          Text(PlayerQueueSummary.detail(seconds: lesson.seconds, watched: watched))
+            .font(.system(size: 10.5, weight: .medium, design: .rounded).monospacedDigit())
+            .foregroundStyle(.white.opacity(0.58))
+            .lineLimit(1)
+        }
+
+        Spacer(minLength: 4)
+
+        if playing {
+          Image(systemName: "waveform")
+            .font(.system(size: 12, weight: .bold))
+            .foregroundStyle(Palette.brand)
+        }
+      }
+      .padding(.horizontal, 8)
+      .padding(.vertical, 7)
+      .frame(height: Self.height)
+      .background(
+        RoundedRectangle(cornerRadius: 16, style: .continuous)
+          .fill(playing ? Color.white.opacity(0.10) : Color.clear)
+      )
+      .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+    .buttonStyle(.plain)
+    .accessibilityLabel(lesson.title)
+    .accessibilityValue(PlayerQueueSummary.detail(seconds: lesson.seconds, watched: watched))
+  }
+
+  private var track: some View {
+    GeometryReader { proxy in
+      ZStack(alignment: .leading) {
+        Capsule().fill(Color.white.opacity(0.16))
+        Capsule()
+          .fill(Palette.brand)
+          .frame(width: proxy.size.width * CGFloat(min(max(watched ?? 0, 0), 1)))
+      }
+    }
+    .frame(height: 3)
+  }
+}
+
 /// What the last gesture did, held on screen long enough to read.
 enum PlayerHUD: Equatable {
   /// Seconds skipped: positive forward, negative back.
@@ -127,6 +280,6 @@ struct PlayerHUDView: View {
     .foregroundStyle(.white)
     .padding(.horizontal, 18)
     .padding(.vertical, 13)
-    .glass(RoundedRectangle(cornerRadius: 20, style: .continuous), tint: 0.58, rim: 0.54)
+    .glass(RoundedRectangle(cornerRadius: 20, style: .continuous), tint: 0.68, rim: 0.62)
   }
 }

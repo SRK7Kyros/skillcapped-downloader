@@ -17,6 +17,7 @@ struct PlayerScreen: View {
 
   @EnvironmentObject private var coordinator: PlayerCoordinator
   @EnvironmentObject private var progress: ProgressStore
+  @EnvironmentObject private var prefs: PreferencesStore
   @Environment(\.dismiss) private var dismiss
 
   /// The lesson on screen, which is not always the one the cover was opened
@@ -40,6 +41,7 @@ struct PlayerScreen: View {
 
   @State private var chrome = true
   @State private var chromeTask: Task<Void, Never>?
+  @State private var queueOpen = false
   @State private var hud: PlayerHUD?
   @State private var hudTask: Task<Void, Never>?
   @State private var burst = SkipBurst()
@@ -109,7 +111,7 @@ struct PlayerScreen: View {
       Color.black
 
       if let player {
-        PlayerSurface(player: player, pictureInPicture: pictureInPicture)
+        PlayerSurface(player: player, pictureInPicture: pictureInPicture, fit: prefs.videoFit)
           .scaleEffect(zoom)
           .offset(zoomOffset)
       }
@@ -144,6 +146,9 @@ struct PlayerScreen: View {
           canStepBack: coordinator.neighbour(of: current, forward: false) != nil,
           canStepForward: coordinator.neighbour(of: current, forward: true) != nil,
           pictureInPicture: pictureInPicture.available,
+          queue: coordinator.queue,
+          queueOpen: $queueOpen,
+          fit: prefs.videoFit,
           window: size,
           insets: insets,
           close: { dismiss() },
@@ -153,7 +158,9 @@ struct PlayerScreen: View {
           scrub: { hold.choose(); position = $0 },
           commit: { commit($0) },
           changeRate: cycleRate,
-          togglePictureInPicture: { pictureInPicture.toggle() }
+          toggleFit: toggleFit,
+          togglePictureInPicture: { pictureInPicture.toggle() },
+          select: choose
         )
         .transition(.opacity)
       }
@@ -210,8 +217,16 @@ struct PlayerScreen: View {
             case .second:
               drag = nil
               zooming = false
-              withAnimation(.easeInOut(duration: 0.2)) { chrome.toggle() }
-              if chrome { showChrome() }
+              // A tap outside the queue drawer puts the drawer away, which is
+              // what a floating panel of its own invites; only the next tap
+              // takes the whole transport.
+              if queueOpen {
+                withAnimation(.easeOut(duration: 0.18)) { queueOpen = false }
+                showChrome()
+              } else {
+                withAnimation(.easeInOut(duration: 0.2)) { chrome.toggle() }
+                if chrome { showChrome() }
+              }
             }
           }
       )
@@ -568,6 +583,26 @@ struct PlayerScreen: View {
     load(neighbour)
   }
 
+  /// A lesson picked in the queue drawer. It is the same move as stepping to a
+  /// neighbour, except the viewer chose which one — so the transport, the resume
+  /// point and the queue all behave as they do after a step.
+  private func choose(_ lesson: Lesson) {
+    queueOpen = false
+    guard lesson.id != current.id else {
+      showChrome()
+      return
+    }
+    burst.reset()
+    hud = nil
+    load(lesson)
+    showChrome()
+  }
+
+  private func toggleFit() {
+    prefs.videoFit = prefs.videoFit.toggled
+    showChrome()
+  }
+
   private func cycleRate() {
     let index = Self.rates.firstIndex(of: rate) ?? 0
     rate = Self.rates[(index + 1) % Self.rates.count]
@@ -665,6 +700,13 @@ struct PlayerScreen: View {
       // that, and the transport — the only way to close the player — vanished
       // over it four seconds in).
       guard !Task.isCancelled, drag == nil, player?.timeControlStatus == .playing else { return }
+      // The drawer is being read, so the chrome stays — and the timer starts
+      // again rather than stopping here, or the transport would sit on screen
+      // for good once the drawer was put away.
+      if queueOpen {
+        showChrome()
+        return
+      }
       withAnimation(.easeOut(duration: 0.25)) { chrome = false }
     }
   }
@@ -687,14 +729,15 @@ struct PlayerScreen: View {
 
 /// The transport, floating over the picture rather than a drawer over the bottom
 /// of it, in the order a thumb expects — skip back, play, skip forward, the
-/// timeline, the speed, the queue's neighbours — with the Picture in Picture
-/// switch alone in the screen's top-right corner, where it no longer competes
-/// with the controls that are touched every few seconds.
+/// timeline, the speed, the queue's neighbours and the queue itself — with the
+/// fit control, the output switch and the Picture in Picture switch in the
+/// screen's top-right corner, where they no longer compete with the controls
+/// that are touched every few seconds.
 ///
 /// It has two shapes. A wide window holds all of it in one row. A portrait phone
-/// cannot, so the rate and the two queue steps float above the bar as their own
-/// buttons, and the bar keeps the three controls a thumb reaches for plus a
-/// timeline wide enough for both readouts (`PlayerChromeLayout`).
+/// cannot, so the rate, the two queue steps and the queue float above the bar as
+/// their own buttons, and the bar keeps the three controls a thumb reaches for
+/// plus a timeline wide enough for both readouts (`PlayerChromeLayout`).
 @MainActor
 private struct Chrome: View {
   let lesson: Lesson
@@ -705,6 +748,11 @@ private struct Chrome: View {
   let canStepBack: Bool
   let canStepForward: Bool
   let pictureInPicture: Bool
+  /// The list the lesson was opened from, which is what the queue control offers
+  /// without leaving the player.
+  let queue: [Lesson]
+  @Binding var queueOpen: Bool
+  let fit: VideoFit
 
   /// The window the chrome is drawn in and the safe area it has to clear. Both
   /// come from the layout rather than from the window: the picture runs through
@@ -720,7 +768,9 @@ private struct Chrome: View {
   let scrub: (Double) -> Void
   let commit: (Double) -> Void
   let changeRate: () -> Void
+  let toggleFit: () -> Void
   let togglePictureInPicture: () -> Void
+  let select: (Lesson) -> Void
 
   var body: some View {
     VStack(spacing: 0) {
@@ -731,6 +781,17 @@ private struct Chrome: View {
       Spacer(minLength: 0)
 
       VStack(alignment: .trailing, spacing: 10) {
+        if queueOpen, !queue.isEmpty {
+          PlayerQueueDrawer(
+            queue: queue,
+            current: lesson,
+            liveFraction: duration > 0 ? position / duration : nil,
+            window: window,
+            select: select
+          )
+          .transition(.opacity.combined(with: .move(edge: .bottom)))
+          .zIndex(1)
+        }
         if floatsControls {
           floating
         }
@@ -786,7 +847,7 @@ private struct Chrome: View {
           .font(.system(size: 13, weight: .bold))
           .foregroundStyle(.white)
           .frame(width: 32, height: 32)
-          .glass(Circle(), tint: 0.46, rim: 0.62)
+          .glass(Circle(), tint: 0.58, rim: 0.70)
       }
       .buttonStyle(.plain)
       .accessibilityLabel("Close")
@@ -806,9 +867,20 @@ private struct Chrome: View {
 
       Spacer(minLength: 0)
 
+      Button(action: toggleFit) {
+        Image(systemName: fit.glyph)
+          .font(.system(size: 12, weight: .bold))
+          .foregroundStyle(.white)
+          .frame(width: 32, height: 32)
+          .glass(Circle(), tint: 0.58, rim: 0.70)
+      }
+      .buttonStyle(.plain)
+      .accessibilityLabel(fit.actionLabel)
+      .accessibilityIdentifier("player.fit")
+
       RoutePicker(diameter: 32)
         .frame(width: 32, height: 32)
-        .glass(Circle(), tint: 0.46, rim: 0.62)
+        .glass(Circle(), tint: 0.58, rim: 0.70)
         .accessibilityLabel("Audio and video output")
 
       if pictureInPicture {
@@ -817,7 +889,7 @@ private struct Chrome: View {
             .font(.system(size: 13, weight: .bold))
             .foregroundStyle(.white)
             .frame(width: 32, height: 32)
-            .glass(Circle(), tint: 0.46, rim: 0.62)
+            .glass(Circle(), tint: 0.58, rim: 0.70)
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Picture in picture")
@@ -842,13 +914,14 @@ private struct Chrome: View {
 
       floatingButton { previous }
       floatingButton { next }
+      floatingButton { queueControl }
     }
   }
 
   private func floatingButton<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
     content()
       .frame(width: 44, height: 44)
-      .glass(Circle(), tint: 0.46, rim: 0.58)
+      .glass(Circle(), tint: 0.58, rim: 0.70)
   }
 
   /// One row: every control at the same height, and the timeline the only thing
@@ -869,11 +942,31 @@ private struct Chrome: View {
         rateChip
         previous
         next
+        queueControl
       }
     }
     .padding(.horizontal, 14)
     .padding(.vertical, 6)
-    .glass(Capsule(), tint: 0.52, rim: 0.58, rimWidth: 1.2, lift: 0.4)
+    .glass(Capsule(), tint: 0.64, rim: 0.72, rimWidth: 1.2, lift: 0.44)
+  }
+
+  /// The list the lesson was opened from, as a drawer above the button rather
+  /// than a sheet over the picture: choosing the next lesson is a step inside the
+  /// player, not a screen of its own.
+  private var queueControl: some View {
+    let place = PlayerQueueSummary.position(of: lesson.id, in: queue)
+    return Button {
+      withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) { queueOpen.toggle() }
+    } label: {
+      Image(systemName: queueOpen ? "list.bullet.rectangle.fill" : "list.bullet")
+        .font(.system(size: 14, weight: .bold))
+        .foregroundStyle(.white.opacity(queueOpen ? 1 : 0.9))
+        .frame(width: 34, height: 34)
+        .contentShape(Rectangle())
+    }
+    .buttonStyle(.plain)
+    .accessibilityLabel("Queue")
+    .accessibilityValue(place ?? "")
   }
 
   private var playButton: some View {
