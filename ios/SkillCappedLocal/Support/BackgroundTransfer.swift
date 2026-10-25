@@ -49,13 +49,20 @@ final class BackgroundTransfer: NSObject, URLSessionDownloadDelegate, @unchecked
   var onUnattendedPart: (@Sendable () -> Void)?
 
   /// Called on the delegate's thread the moment the last transfer in flight has
-  /// settled. The next batch is handed over from a job that has not run yet, and
-  /// iOS has nothing left to wake the app for until it does — so whatever is
-  /// listening has to keep the process alive right now, not a hop later.
+  /// settled. With a lesson's whole part list handed over at once, that means its
+  /// parts are all on disk and the merge is next — so whatever is listening has to
+  /// keep the process alive right now, not a hop later.
   var onWentIdle: (@Sendable () -> Void)?
 
   private let lock = NSLock()
   private var waiters: [Int: CheckedContinuation<Int64, Error>] = [:]
+  /// Parts that settled before anything asked for them. Ordinary now that a whole
+  /// lesson is handed over at once: the system finishes them faster than the queue
+  /// consumes the results, and a relaunch delivers some with no caller at all.
+  private var landed: [Int: Result<Int64, Error>] = [:]
+  /// The tasks this process started, so an awaited part can be cancelled (or a
+  /// cancellation of the awaiting task reached) without a continuation in hand.
+  private var transfers: [Int: URLSessionDownloadTask] = [:]
   /// Every task this process started and has not settled yet. A task the *system*
   /// carried on from a previous launch was never registered here, and answers
   /// through `onUnattendedPart` instead.
@@ -87,35 +94,62 @@ final class BackgroundTransfer: NSObject, URLSessionDownloadDelegate, @unchecked
     previous?()
   }
 
-  /// Fetch one part into its job folder and answer its size.
-  func fetch(_ url: URL, part: BackgroundSegment) async throws -> Int64 {
-    if Task.isCancelled { throw CancellationError() }
-    let handle = CancellationHandle()
-    return try await withTaskCancellationHandler {
+  /// Hand one part to the system, without waiting for it.
+  ///
+  /// Synchronous on purpose: a lesson's entire part list goes over in a single
+  /// turn, so the app never has to be awake a second time to finish enqueuing. The
+  /// batch-at-a-time version needed a wake per batch of four, and iOS owes the app
+  /// none — a phone that was left alone stopped with four parts queued and nothing
+  /// in the air to wake it. `wait(for:)` collects the result.
+  @discardableResult
+  func start(_ url: URL, part: BackgroundSegment) -> Int? {
+    guard !Task.isCancelled else { return nil }
+    var request = URLRequest(url: url)
+    request.timeoutInterval = 60
+    request.setValue(Self.userAgent, forHTTPHeaderField: "User-Agent")
+    let task = session.downloadTask(with: request)
+    task.taskDescription = part.encoded
+    lock.lock()
+    inFlight.insert(task.taskIdentifier)
+    transfers[task.taskIdentifier] = task
+    lock.unlock()
+    // Resumed before it is cancelled: a task cancelled while still suspended may
+    // never reach the delegate, which would leave a waiter hanging for the rest of
+    // the session.
+    task.resume()
+    return task.taskIdentifier
+  }
+
+  /// Await a part that was already handed over.
+  func wait(for identifier: Int) async throws -> Int64 {
+    try await withTaskCancellationHandler {
       try await withCheckedThrowingContinuation { continuation in
+        lock.lock()
+        if let outcome = landed.removeValue(forKey: identifier) {
+          lock.unlock()
+          continuation.resume(with: outcome)
+          return
+        }
         if Task.isCancelled {
+          let task = transfers[identifier]
+          lock.unlock()
+          task?.cancel()
           continuation.resume(throwing: CancellationError())
           return
         }
-        var request = URLRequest(url: url)
-        request.timeoutInterval = 60
-        request.setValue(Self.userAgent, forHTTPHeaderField: "User-Agent")
-        let task = session.downloadTask(with: request)
-        task.taskDescription = part.encoded
-        lock.lock()
-        waiters[task.taskIdentifier] = continuation
-        inFlight.insert(task.taskIdentifier)
+        waiters[identifier] = continuation
         lock.unlock()
-        handle.attach(task)
-        // Resumed before it is cancelled: a task cancelled while still suspended
-        // may never reach the delegate, which would leave this continuation — and
-        // the lesson waiting on it — hanging for the rest of the session.
-        task.resume()
-        if Task.isCancelled { handle.cancel() }
       }
     } onCancel: {
-      handle.cancel()
+      cancel(identifier)
     }
+  }
+
+  func cancel(_ identifier: Int) {
+    lock.lock()
+    let task = transfers[identifier]
+    lock.unlock()
+    task?.cancel()
   }
 
   /// Drop every transfer that belongs to a lesson, so a cancelled download does
@@ -208,6 +242,13 @@ final class BackgroundTransfer: NSObject, URLSessionDownloadDelegate, @unchecked
     lock.lock()
     let waiter = waiters.removeValue(forKey: identifier)
     let started = inFlight.remove(identifier) != nil
+    transfers.removeValue(forKey: identifier)
+    if waiter == nil, started {
+      // Kept until its caller asks. A batch a lesson never came back for leaves a
+      // few hundred of these behind — a few tens of kilobytes — and dropping one
+      // would hang the `wait` that still wants it, so nothing is evicted.
+      landed[identifier] = outcome
+    }
     let idle = inFlight.isEmpty
     lock.unlock()
 
@@ -218,32 +259,12 @@ final class BackgroundTransfer: NSObject, URLSessionDownloadDelegate, @unchecked
     guard let waiter else {
       // Nobody is waiting: the app was relaunched just to take delivery, and the
       // part is already on disk for the next run to find.
-      if case .success = outcome { onUnattendedPart?() }
+      if !started, case .success = outcome { onUnattendedPart?() }
       return
     }
     switch outcome {
     case let .success(size): waiter.resume(returning: size)
     case let .failure(error): waiter.resume(throwing: error)
     }
-  }
-}
-
-/// Holds the task a fetch created, so cancelling the surrounding `Task` can cancel
-/// the transfer too. A continuation alone cannot be reached from `onCancel`.
-private final class CancellationHandle: @unchecked Sendable {
-  private let lock = NSLock()
-  private var task: URLSessionDownloadTask?
-
-  func attach(_ task: URLSessionDownloadTask) {
-    lock.lock()
-    self.task = task
-    lock.unlock()
-  }
-
-  func cancel() {
-    lock.lock()
-    let task = task
-    lock.unlock()
-    task?.cancel()
   }
 }

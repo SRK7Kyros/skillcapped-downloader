@@ -62,6 +62,10 @@ actor SegmentDownloader {
 
   static let cdnOrigin = "https://d13z5uuzt1wkbz.cloudfront.net"
   static let segmentConcurrency = 4
+  /// How many parts one hand-over puts in the system's queue. Wide enough that a
+  /// normal lesson leaves in a single turn — the point of the change — and bounded
+  /// because the session carries the list until it drains.
+  static let partWindow = 64
   static let maxSegments = 20_000
 
   private var qualityCache: [String: [String]] = [:]
@@ -95,7 +99,7 @@ actor SegmentDownloader {
     let key = "\(uuid):\(qualityId)"
     if let cached = countCache[key] { return cached }
 
-    if let listing = await publishedListing(uuid: uuid, qualityId: qualityId) {
+    if let listing = await publishedListing(uuid: uuid, qualityId: qualityId), listing.count > 0 {
       countCache[key] = listing.count
       return listing.count
     }
@@ -229,6 +233,15 @@ actor SegmentDownloader {
 
   /// Segments already on disk from an interrupted run are kept, so a retry only
   /// fetches what is missing.
+  ///
+  /// The parts go to the background session **before the first suspension**, and
+  /// only then does this wait for any of them. That ordering is the design: a
+  /// lesson enqueued four parts at a time needed the app to be woken to enqueue
+  /// the next four, and iOS owes an app no such wake-up — the system only promises
+  /// a relaunch once *all* of a session's transfers are done — so a suspended app
+  /// was left with an empty queue and nothing to wake it. A normal lesson now goes
+  /// over in one turn; a very long one is handed over in windows, topped up as
+  /// each part settles, which is a moment the app is awake for anyway.
   private func fetchParts(
     uuid: String,
     qualityId: Int,
@@ -237,79 +250,75 @@ actor SegmentDownloader {
     onProgress: @escaping @Sendable (DownloadProgress) -> Void
   ) async throws -> Int64 {
     var existing: Int64 = 0
-    var alreadyDone = 0
-    for index in 1...total where Self.isUsable(Self.partURL(jobDir, index)) {
-      existing += Self.size(of: Self.partURL(jobDir, index))
-      alreadyDone += 1
+    var missing: [Int] = []
+    for index in 1...total {
+      let path = Self.partURL(jobDir, index)
+      if Self.isUsable(path) {
+        existing += Self.size(of: path)
+      } else {
+        missing.append(index)
+      }
     }
-    var done = alreadyDone
+    var done = total - missing.count
     var bytes = existing
+
+    guard !missing.isEmpty else {
+      onProgress(DownloadProgress(phase: .downloading, segmentsDone: done, segmentsTotal: total, bytes: bytes))
+      return bytes
+    }
+
+    var next = 0
+    var outstanding: [(index: Int, task: Int)] = []
+
+    func handOver() throws {
+      while outstanding.count < Self.partWindow, next < missing.count {
+        let index = missing[next]
+        next += 1
+        try Task.checkCancellation()
+        guard let url = Self.segmentURL(uuid: uuid, qualityId: qualityId, index: index) else {
+          throw DownloadError.segment(index: index, status: 0)
+        }
+        let part = BackgroundSegment(uuid: uuid, jobFolder: jobDir, index: index)
+        if let task = BackgroundTransfer.shared.start(url, part: part) {
+          outstanding.append((index, task))
+        }
+      }
+    }
+
+    try handOver()
+    BackgroundJournal.shared.record("handed over \(next) of \(total) parts")
+
+    // Said after the hand-over, never before it: this event releases the queue's
+    // start lease, and a lease released while the lesson was still being handed
+    // over is exactly the moment the app could be suspended mid-turn.
     onProgress(DownloadProgress(phase: .downloading, segmentsDone: done, segmentsTotal: total, bytes: bytes))
 
-    try await withThrowingTaskGroup(of: (Int, Int64).self) { group in
-      var next = 1
-      var inFlight = 0
-
-      while next <= total, inFlight < Self.segmentConcurrency {
-        let index = next
-        next += 1
-        if Self.isUsable(Self.partURL(jobDir, index)) { continue }
-        group.addTask {
-          let size = try await self.fetchPart(
-            uuid: uuid,
-            qualityId: qualityId,
-            index: index,
-            jobDir: jobDir
-          )
-          return (index, size)
-        }
-        inFlight += 1
-      }
-
-      while let (_, size) = try await group.next() {
-        inFlight -= 1
-        done += 1
-        bytes += size
-        onProgress(DownloadProgress(phase: .downloading, segmentsDone: done, segmentsTotal: total, bytes: bytes))
-        try Task.checkCancellation()
-        while next <= total, inFlight < Self.segmentConcurrency {
-          let index = next
-          next += 1
-          if Self.isUsable(Self.partURL(jobDir, index)) { continue }
-          group.addTask {
-            let size = try await self.fetchPart(
-              uuid: uuid,
-              qualityId: qualityId,
-              index: index,
-              jobDir: jobDir
-            )
-            return (index, size)
-          }
-          inFlight += 1
-        }
-      }
+    while !outstanding.isEmpty {
+      let part = outstanding.removeFirst()
+      let size = try await partSize(part, uuid: uuid, qualityId: qualityId, jobDir: jobDir)
+      done += 1
+      bytes += size
+      onProgress(DownloadProgress(phase: .downloading, segmentsDone: done, segmentsTotal: total, bytes: bytes))
+      try Task.checkCancellation()
+      try handOver()
     }
     return bytes
   }
 
-  /// One part, fetched by the background session so it outlives the app being
-  /// suspended. The system writes it straight into the job folder; this only
-  /// decides where it goes and how often to try.
-  private func fetchPart(
+  /// One part already handed over: its size, or a retry. A retry is handed to the
+  /// session again from here — the app is awake at this point, because a part
+  /// settling is what woke it — so it depends on no lease.
+  private func partSize(
+    _ part: (index: Int, task: Int),
     uuid: String,
     qualityId: Int,
-    index: Int,
     jobDir: URL
   ) async throws -> Int64 {
-    guard let url = Self.segmentURL(uuid: uuid, qualityId: qualityId, index: index) else {
-      throw DownloadError.segment(index: index, status: 0)
-    }
-    let part = BackgroundSegment(uuid: uuid, jobFolder: jobDir, index: index)
+    var identifier = part.task
     var lastStatus = 0
     for attempt in 1...3 {
-      try Task.checkCancellation()
       do {
-        return try await BackgroundTransfer.shared.fetch(url, part: part)
+        return try await BackgroundTransfer.shared.wait(for: identifier)
       } catch let error as DownloadError {
         switch error {
         case .emptySegment, .cancelled, .qualityUnavailable, .noSegments, .storage:
@@ -326,11 +335,18 @@ actor SegmentDownloader {
       } catch {
         lastStatus = -1
       }
-      if attempt < 3 {
-        try? await Task.sleep(for: .milliseconds(300 * attempt))
-      }
+      guard attempt < 3 else { break }
+      try? await Task.sleep(for: .milliseconds(300 * attempt))
+      try Task.checkCancellation()
+      guard let url = Self.segmentURL(uuid: uuid, qualityId: qualityId, index: part.index),
+            let retry = BackgroundTransfer.shared.start(
+              url,
+              part: BackgroundSegment(uuid: uuid, jobFolder: jobDir, index: part.index)
+            )
+      else { throw DownloadError.segment(index: part.index, status: lastStatus) }
+      identifier = retry
     }
-    throw DownloadError.segment(index: index, status: lastStatus)
+    throw DownloadError.segment(index: part.index, status: lastStatus)
   }
 
   /// Merged into a scratch name and renamed into place, so a crash mid-merge

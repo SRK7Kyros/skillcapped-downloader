@@ -344,8 +344,9 @@ final class DownloadManager: ObservableObject {
     // in flight, so there is nothing to wake the app for. Between one lesson and
     // the next that means the queue stops dead until the app is opened by hand:
     // measured on a course, lesson one finished in the background and lesson two
-    // never asked for its manifest. The lease taken here carries the hand-over;
-    // the first part handed to the transfer session ends it (`apply`).
+    // never asked for its manifest. The lease taken here carries the whole start —
+    // the reads and the hand-over of every part — and the queue's first progress
+    // event ends it once the system owns them (`apply`).
     startLease = startLease ?? BackgroundLease("lesson")
     BackgroundJournal.shared.record("pump: start \(next.title)")
 
@@ -443,11 +444,11 @@ final class DownloadManager: ObservableObject {
     LiveActivityInspector.read(error: activityTrouble)
   }
 
-  /// A part landed and nothing else is in the air. The next batch is handed over
-  /// from a job that has not run yet, and with no transfer left in flight the
-  /// system has nothing to wake the app for — so a course left alone would sit
-  /// half-downloaded until the app was opened by hand. The same lease the wake
-  /// takes covers that gap; the next part's progress ends it.
+  /// Every transfer this process started has settled — a lesson's parts are all on
+  /// disk — and the merge still has to run in this process. With nothing left in
+  /// the air the system has nothing to wake the app for, so the same lease the
+  /// wake takes covers the gap until the merge announces itself; the next part's
+  /// progress ends it.
   func transferWentIdle() {
     guard runner != nil else { return }
     guard TransferHandover.keepsWorking(tasks.map(\.state)) else {
