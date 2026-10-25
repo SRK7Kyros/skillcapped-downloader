@@ -349,7 +349,10 @@ on the phone itself, into the same folders the desktop build writes.
   seconds of a picture that is **really advancing** — `timeControlStatus`, not the
   rate we asked for: an item that cannot play holds its requested rate at 1 while
   the screen shows a still frame, which hid the transport (the only way out of the
-  player) four seconds in — and a rate button cycling 1×/1.25×/1.5×/2×. The chrome
+  player) four seconds in — **hold anywhere on the picture to play at 2× while the
+  finger stays down** (a press that ends inside 0.4 s is still a tap, a press that
+  starts moving is still a scrub, and letting go hands back the rate it
+  interrupted, a pause included) — and a rate button cycling 1×/1.25×/1.5×/2×. The chrome
   has **two shapes**, and the whole transport floats over the picture in the order
   a thumb expects: skip back ten, play/pause, skip forward ten, the timeline, the
   rate, then the queue's previous and next. A wide window — a phone on its side, a
@@ -418,7 +421,7 @@ on the phone itself, into the same folders the desktop build writes.
   picture, the route list itself and hardware decoding are still the platform's own
   (`Support/PictureInPicture.swift` wraps `AVPictureInPictureController` around the
   layer, `Support/RoutePicker.swift` the output button). The maths behind every gesture lives in `Support/PlayerGestures.swift`
-  (`PlayerMath`, `SkipBurst`) so it is pinned by a test rather than by eye.
+  (`PlayerMath`, `SkipBurst`, `HoldToSpeed`) so it is pinned by a test rather than by eye.
   `AVPlayerViewController` was used until 1.4.0 and could not carry any of it: its
   chrome cannot be extended, so a lesson could not offer what a phone player offers.
   The position of every file is remembered and resumed above five seconds, and the
