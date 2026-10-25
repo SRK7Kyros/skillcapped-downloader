@@ -72,20 +72,31 @@ jobs:
         timeout-minutes: 30
         run: |
           set +e
+          # 120 s per test was the tripwire, not a hang detector: on a loaded
+          # macos-26 runner the picker test legitimately takes ~210 s (it drives a
+          # system picker through a cold simulator) and XCTest then marks a test
+          # that passed every assertion as failed — "Failing tests:
+          # FolderPickerUITests.testTappingOpenHandsTheFolderBackAndLeavesNoPickerBehind()"
+          # beside "passed (212.253 seconds)" in the same log. The step's own
+          # timeout-minutes is the real bound, so the allowance only needs to be
+          # comfortably above a slow test, not a deadline.
           xcodebuild test \
             -project SkillCappedLocal.xcodeproj \
             -scheme SkillCappedLocal \
             -destination "platform=iOS Simulator,name=${{ steps.sim.outputs.device }}" \
             -test-timeouts-enabled YES \
-            -default-test-execution-time-allowance 120 \
-            -maximum-test-execution-time-allowance 300 \
+            -default-test-execution-time-allowance 300 \
+            -maximum-test-execution-time-allowance 600 \
             -resultBundlePath "$RUNNER_TEMP/tests.xcresult" \
             > "$RUNNER_TEMP/tests.log" 2>&1
           STATUS=$?
           grep -E "Test Case .*(passed|failed)|Executed [0-9]+ test|error:|\*\* TEST" "$RUNNER_TEMP/tests.log" | tail -80
           if [ $STATUS -ne 0 ]; then
             echo "--- failing tests ---"
-            grep -E "Test Case .* failed|error:" "$RUNNER_TEMP/tests.log" | head -40
+            # `Failing tests:` is the only line that names a test which timed out:
+            # XCTest prints no `Test Case … failed` for one, so the previous
+            # pattern reported an empty list while a test had in fact failed.
+            grep -E "Test Case .* failed|error:|Failing tests:" -A 6 "$RUNNER_TEMP/tests.log" | head -60
           fi
           exit $STATUS
 
