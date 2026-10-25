@@ -8,6 +8,7 @@ struct SettingsView: View {
 
   @State private var picking = false
   @State private var report: LiveActivityReport?
+  @State private var journal: [String] = []
 
   var body: some View {
     NavigationStack {
@@ -50,6 +51,32 @@ struct SettingsView: View {
           Text("Downloads")
         } footer: {
           Text("Discover fetches the site's own catalogue and pulls a lesson straight onto the phone; it lands in the folder above, in the same Courses, Videos and Commentaries layout the desktop build writes.")
+        }
+
+        Section {
+          if journal.isEmpty {
+            Text("Nothing recorded yet.")
+              .font(.caption)
+              .foregroundStyle(Palette.inkDim)
+          } else {
+            ForEach(Array(journal.enumerated()), id: \.offset) { _, entry in
+              Text(entry)
+                .font(.caption2.monospaced())
+                .foregroundStyle(Palette.inkDim)
+            }
+          }
+          HStack {
+            Button("Refresh") { journal = BackgroundJournal.shared.lines() }
+            Spacer()
+            Button("Clear", role: .destructive) {
+              BackgroundJournal.shared.clear()
+              journal = []
+            }
+          }
+        } header: {
+          Text("Background queue")
+        } footer: {
+          Text("What the queue did while the screen was off: the system hands over a part, the app writes one line here. A download that stops in the background stops on one of these lines.")
         }
 
         Section {
@@ -96,7 +123,10 @@ struct SettingsView: View {
       }
       .scrollContentBackground(.hidden)
       .background(Palette.bg)
-      .onAppear { report = downloads.liveActivityReport() }
+      .onAppear {
+        report = downloads.liveActivityReport()
+        journal = BackgroundJournal.shared.lines()
+      }
       .navigationTitle("Library")
       .navigationBarTitleDisplayMode(.inline)
       .toolbar {

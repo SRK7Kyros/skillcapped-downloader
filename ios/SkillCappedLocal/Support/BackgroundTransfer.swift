@@ -175,7 +175,10 @@ final class BackgroundTransfer: NSObject, URLSessionDownloadDelegate, @unchecked
     let completion = eventsCompletion
     eventsCompletion = nil
     lock.unlock()
-    DispatchQueue.main.async { completion?() }
+    DispatchQueue.main.async {
+      BackgroundJournal.shared.record("transfer events done")
+      completion?()
+    }
   }
 
   // MARK: - Landed parts

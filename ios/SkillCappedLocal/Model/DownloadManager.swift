@@ -318,11 +318,17 @@ final class DownloadManager: ObservableObject {
   }
 
   private func pump() {
-    guard !held else { return }
+    guard !held else {
+      BackgroundJournal.shared.record("pump: held for the library move")
+      return
+    }
     // Nothing starts until the library is known: `root` begins as the app's own
     // folder, so a queue that ran before the choice was read would write a lesson
     // somewhere the user does not keep the library.
-    guard rootIsResolved else { return }
+    guard rootIsResolved else {
+      BackgroundJournal.shared.record("pump: library not resolved")
+      return
+    }
     guard runner == nil else { return }
     guard let next = tasks
       .filter({ $0.state == .queued })
@@ -332,6 +338,17 @@ final class DownloadManager: ObservableObject {
 
     let uuid = next.uuid
     guard let index = tasks.firstIndex(where: { $0.uuid == uuid }) else { return }
+
+    // A lesson begins with two reads over the ordinary session — the qualities it
+    // may ask for and its manifest — and at that moment nothing of the system's is
+    // in flight, so there is nothing to wake the app for. Between one lesson and
+    // the next that means the queue stops dead until the app is opened by hand:
+    // measured on a course, lesson one finished in the background and lesson two
+    // never asked for its manifest. The lease taken here carries the hand-over;
+    // the first part handed to the transfer session ends it (`apply`).
+    startLease = startLease ?? BackgroundLease("lesson")
+    BackgroundJournal.shared.record("pump: start \(next.title)")
+
     tasks[index].state = .downloading
     running = uuid
     sample = nil
@@ -387,13 +404,7 @@ final class DownloadManager: ObservableObject {
       adopted = saved
       root = saved.url
     }
-    // The system only promises the app this window to take delivery, and the wake
-    // that starts a lesson spends it on two network reads before the first part is
-    // handed over. Without the lease that setup can be suspended mid-flight, with
-    // nothing left to wake it again.
-    if rootIsResolved, runner == nil, tasks.contains(where: { $0.state == .queued }) {
-      startLease = startLease ?? BackgroundLease("wake")
-    }
+    BackgroundJournal.shared.record("wake: library \(rootIsResolved ? "known" : "unresolved")")
     pump()
     refreshActivity()
   }
@@ -439,7 +450,11 @@ final class DownloadManager: ObservableObject {
   /// takes covers that gap; the next part's progress ends it.
   func transferWentIdle() {
     guard runner != nil else { return }
-    guard TransferHandover.keepsWorking(tasks.map(\.state)) else { return }
+    guard TransferHandover.keepsWorking(tasks.map(\.state)) else {
+      BackgroundJournal.shared.record("batch idle: nothing left to continue")
+      return
+    }
+    BackgroundJournal.shared.record("batch idle: lease taken")
     startLease = startLease ?? BackgroundLease("hand-over")
   }
 
@@ -492,6 +507,7 @@ final class DownloadManager: ObservableObject {
       tasks[index].path = outcome.url.path
       tasks[index].finishedAt = Date()
       tasks[index].error = nil
+      BackgroundJournal.shared.record("done \(tasks[index].title)")
     }
     persist()
     onChange?()
@@ -512,6 +528,7 @@ final class DownloadManager: ObservableObject {
        tasks[index].state != .paused {
       tasks[index].state = reason == nil ? .queued : .failed
       tasks[index].error = reason
+      BackgroundJournal.shared.record("stopped \(tasks[index].title): \(reason ?? "cancelled")")
     }
     persist()
     pump()

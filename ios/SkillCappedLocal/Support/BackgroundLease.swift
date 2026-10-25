@@ -5,21 +5,26 @@ import UIKit
 ///
 /// A transfer itself does not need this: it runs in the system's own background
 /// session and continues while the app is suspended. Merging the parts into one
-/// stream and moving it into the library do need it, because that is ordinary
-/// work in this process.
+/// stream, moving it into the library, and reading a manifest between two lessons
+/// do need it, because that is ordinary work in this process.
 @MainActor
 final class BackgroundLease {
+  private let name: String
   private var token: UIBackgroundTaskIdentifier = .invalid
 
   init(_ name: String) {
+    self.name = name
     token = UIApplication.shared.beginBackgroundTask(withName: name) { [weak self] in
+      BackgroundJournal.shared.record("lease expired \(name)")
       self?.end()
     }
+    BackgroundJournal.shared.record("lease +\(name)")
   }
 
   func end() {
     guard token != .invalid else { return }
     UIApplication.shared.endBackgroundTask(token)
     token = .invalid
+    BackgroundJournal.shared.record("lease -\(name)")
   }
 }

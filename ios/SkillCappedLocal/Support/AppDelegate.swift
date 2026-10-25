@@ -11,7 +11,9 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
     _ application: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
   ) -> Bool {
+    BackgroundJournal.shared.record("launch (\(Self.name(of: application.applicationState)))")
     BackgroundTransfer.shared.onUnattendedPart = {
+      BackgroundJournal.shared.record("part landed with nobody waiting")
       Task { @MainActor in DownloadManager.shared.wake() }
     }
     BackgroundTransfer.shared.onWentIdle = {
@@ -29,6 +31,16 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
       completionHandler()
       return
     }
+    BackgroundJournal.shared.record("transfer events arrived")
     BackgroundTransfer.shared.store(eventsCompletion: completionHandler)
+  }
+
+  private static func name(of state: UIApplication.State) -> String {
+    switch state {
+    case .active: return "foreground"
+    case .background: return "background"
+    case .inactive: return "inactive"
+    @unknown default: return "unknown"
+    }
   }
 }
