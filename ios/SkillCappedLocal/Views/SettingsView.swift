@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 struct SettingsView: View {
   @EnvironmentObject private var store: LibraryStore
@@ -6,9 +7,14 @@ struct SettingsView: View {
   @EnvironmentObject private var prefs: PreferencesStore
   @Environment(\.dismiss) private var dismiss
 
+  /// How many journal lines the form lists. The whole file goes to the clipboard.
+  private static let shownJournalLines = 16
+
   @State private var picking = false
   @State private var report: LiveActivityReport?
   @State private var journal: [String] = []
+  @State private var copied = false
+  @State private var copyToken = 0
 
   var body: some View {
     NavigationStack {
@@ -66,8 +72,14 @@ struct SettingsView: View {
             }
           }
           HStack {
-            Button("Refresh") { journal = BackgroundJournal.shared.lines() }
+            Button {
+              copyLogs()
+            } label: {
+              Label(copied ? "Copied" : "Copy logs", systemImage: copied ? "checkmark" : "doc.on.doc")
+            }
+            .accessibilityIdentifier("settings.copyLogs")
             Spacer()
+            Button("Refresh") { journal = BackgroundJournal.shared.lines(Self.shownJournalLines) }
             Button("Clear", role: .destructive) {
               BackgroundJournal.shared.clear()
               journal = []
@@ -76,7 +88,7 @@ struct SettingsView: View {
         } header: {
           Text("Background queue")
         } footer: {
-          Text("What the queue did while the screen was off: the system hands over a part, the app writes one line here. A download that stops in the background stops on one of these lines.")
+          Text("What the queue did while the screen was off: the system hands over a part, the app writes one line here. A download that stops in the background stops on one of these lines.\n\nOnly the last \(Self.shownJournalLines) lines are listed; Copy logs puts all \(BackgroundJournal.limit) on the clipboard, with the queue's current state and the Live Activity facts listed below.")
         }
 
         Section {
@@ -125,7 +137,7 @@ struct SettingsView: View {
       .background(Palette.bg)
       .onAppear {
         report = downloads.liveActivityReport()
-        journal = BackgroundJournal.shared.lines()
+        journal = BackgroundJournal.shared.lines(Self.shownJournalLines)
       }
       .navigationTitle("Library")
       .navigationBarTitleDisplayMode(.inline)
@@ -139,5 +151,33 @@ struct SettingsView: View {
       }
     }
     .tint(Palette.brand)
+  }
+
+  /// Reads the journal at the moment of the tap rather than from the form, so a
+  /// line the queue wrote since the screen opened is not what goes missing.
+  @MainActor
+  private func copyLogs() {
+    let activity = downloads.liveActivityReport()
+    let summary = DebugReport(
+      app: Bundle.main.appVersion,
+      folder: store.filesLocation,
+      source: store.isCloudRoot ? "iCloud Drive" : "On this device",
+      queued: downloads.activeCount,
+      onDisk: Format.bytes(downloads.readyBytes),
+      activity: activity,
+      journal: BackgroundJournal.shared.lines(BackgroundJournal.limit),
+      limit: BackgroundJournal.limit
+    )
+    UIPasteboard.general.string = summary.text
+    report = activity
+    journal = Array(summary.journal.suffix(Self.shownJournalLines))
+    copied = true
+    copyToken += 1
+    let token = copyToken
+    Task { @MainActor in
+      try? await Task.sleep(for: .seconds(2))
+      guard token == copyToken else { return }
+      copied = false
+    }
   }
 }
