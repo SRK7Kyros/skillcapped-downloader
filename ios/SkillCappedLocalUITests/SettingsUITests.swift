@@ -7,23 +7,36 @@ import XCTest
 final class SettingsUITests: XCTestCase {
   func testTheBackgroundLogCanBeCopiedInOneTap() {
     let app = XCUIApplication()
-    app.launchArguments = ["-demoLibrary"]
+    app.launchArguments = ["-demoLibrary", "-demoCatalog"]
     app.launch()
 
     let settings = app.buttons["Library settings"]
-    XCTAssertTrue(settings.waitForExistence(timeout: 40), "the toolbar should offer settings")
+    XCTAssertTrue(
+      settings.waitForExistence(timeout: 40),
+      "the toolbar should offer settings:\n\(app.debugDescription)"
+    )
     settings.tap()
 
-    let copy = app.buttons["settings.copyLogs"]
-    XCTAssertTrue(copy.waitForExistence(timeout: 10), "Settings should carry the copy button")
-    XCTAssertEqual(copy.label, "Copy logs")
-
+    // A Form builds its rows lazily, and its controls are not always exposed as
+    // `buttons` on a newer iOS — so the row is found by identifier whatever type
+    // it reports and is scrolled into being before it is tapped.
+    let copy = app.descendants(matching: .any)
+      .matching(identifier: "settings.copyLogs")
+      .firstMatch
     var swipes = 0
-    while !copy.isHittable && swipes < 6 {
+    while !(copy.exists && copy.isHittable) && swipes < 8 {
       app.swipeUp()
       swipes += 1
     }
-    XCTAssertTrue(copy.isHittable, "the copy button should be reachable by scrolling:\n\(app.debugDescription)")
+
+    let tree = app.debugDescription
+    let dump = XCTAttachment(string: tree)
+    dump.name = "settings-hierarchy"
+    dump.lifetime = .keepAlways
+    add(dump)
+
+    XCTAssertTrue(copy.exists, "Settings should carry the copy button:\n\(tree)")
+    XCTAssertEqual(copy.label, "Copy logs")
 
     copy.tap()
 
@@ -34,7 +47,7 @@ final class SettingsUITests: XCTestCase {
     XCTAssertEqual(
       XCTWaiter().wait(for: [says], timeout: 5),
       .completed,
-      "the button should say what it did — it says \(copy.label)"
+      "the button should say what it did — it says \(copy.label)\n\(app.debugDescription)"
     )
 
     let shot = XCTAttachment(screenshot: app.screenshot())
