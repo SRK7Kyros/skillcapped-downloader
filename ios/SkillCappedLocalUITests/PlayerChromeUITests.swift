@@ -232,26 +232,33 @@ final class PlayerChromeUITests: XCTestCase {
     let app = openPlayer()
     showTransport(in: app)
 
-    let toFill = app.buttons["Fill the screen"]
-    let toFit = app.buttons["Fit the whole video"]
+    let control = app.buttons["player.fit"]
+    guard control.waitForExistence(timeout: 5) else {
+      XCTFail("the header should offer the fit control; buttons on screen: \(buttonsOnScreen(in: app))")
+      return
+    }
+
+    let before = control.label
     XCTAssertTrue(
-      toFill.waitForExistence(timeout: 5) || toFit.waitForExistence(timeout: 5),
-      "the header should offer the fit control; buttons on screen: \(buttonsOnScreen(in: app))"
+      before == "Fill the screen" || before == "Fit the whole video",
+      "the fit control should say what it will do, not \"\(before)\""
+    )
+    XCTAssertTrue(
+      control.isHittable,
+      "the fit control should be tappable: frame \(control.frame), buttons on screen: \(buttonsOnScreen(in: app))"
     )
 
-    if toFill.exists {
-      toFill.tap()
-      XCTAssertTrue(
-        toFit.waitForExistence(timeout: 5),
-        "filling the screen should leave the control offering the whole video"
-      )
-    } else if toFit.exists {
-      toFit.tap()
-      XCTAssertTrue(
-        toFill.waitForExistence(timeout: 5),
-        "fitting the whole video should leave the control offering the fill"
-      )
-    }
+    control.tap()
+
+    let changed = XCTNSPredicateExpectation(
+      predicate: NSPredicate(format: "label != %@", before),
+      object: control
+    )
+    XCTAssertEqual(
+      XCTWaiter().wait(for: [changed], timeout: 5),
+      .completed,
+      "tapping \"\(before)\" should leave the control offering the other way; it still says \"\(control.label)\" — hittable \(control.isHittable), frame \(control.frame)"
+    )
   }
 
   private func openPlayer() -> XCUIApplication {
@@ -317,9 +324,10 @@ final class PlayerChromeUITests: XCTestCase {
   /// has faded: it only goes away while the video is really advancing, so the
   /// tap cannot talk the test out of a transport it never had.
   private func showTransport(in app: XCUIApplication) {
-    guard !app.buttons["Back 10 seconds"].exists else { return }
+    let back = app.buttons["Back 10 seconds"]
+    if back.exists, back.isHittable { return }
     app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.35)).tap()
-    _ = app.buttons["Back 10 seconds"].waitForExistence(timeout: 5)
+    _ = back.waitForExistence(timeout: 5)
   }
 
   /// What the transport really looks like when an assertion fails: the labels
