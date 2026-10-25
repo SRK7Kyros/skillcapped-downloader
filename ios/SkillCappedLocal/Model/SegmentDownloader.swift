@@ -182,6 +182,9 @@ actor SegmentDownloader {
         jobDir: jobDir,
         onProgress: onProgress
       )
+      // Announced before the merge rather than after it: the merge is ordinary work
+      // in this process, so the queue has to start holding the app open for it now.
+      onProgress(DownloadProgress(phase: .remuxing, segmentsDone: total, segmentsTotal: total, bytes: bytes))
       try merge(total: total, jobDir: jobDir, into: merged)
       for index in 1...total {
         try? FileManager.default.removeItem(at: Self.partURL(jobDir, index))
@@ -252,9 +255,13 @@ actor SegmentDownloader {
         next += 1
         if Self.isUsable(Self.partURL(jobDir, index)) { continue }
         group.addTask {
-          let data = try await self.fetchPart(uuid: uuid, qualityId: qualityId, index: index)
-          try data.write(to: Self.partURL(jobDir, index), options: .atomic)
-          return (index, Int64(data.count))
+          let size = try await self.fetchPart(
+            uuid: uuid,
+            qualityId: qualityId,
+            index: index,
+            jobDir: jobDir
+          )
+          return (index, size)
         }
         inFlight += 1
       }
@@ -270,9 +277,13 @@ actor SegmentDownloader {
           next += 1
           if Self.isUsable(Self.partURL(jobDir, index)) { continue }
           group.addTask {
-            let data = try await self.fetchPart(uuid: uuid, qualityId: qualityId, index: index)
-            try data.write(to: Self.partURL(jobDir, index), options: .atomic)
-            return (index, Int64(data.count))
+            let size = try await self.fetchPart(
+              uuid: uuid,
+              qualityId: qualityId,
+              index: index,
+              jobDir: jobDir
+            )
+            return (index, size)
           }
           inFlight += 1
         }
@@ -281,31 +292,35 @@ actor SegmentDownloader {
     return bytes
   }
 
-  private func fetchPart(uuid: String, qualityId: Int, index: Int) async throws -> Data {
+  /// One part, fetched by the background session so it outlives the app being
+  /// suspended. The system writes it straight into the job folder; this only
+  /// decides where it goes and how often to try.
+  private func fetchPart(
+    uuid: String,
+    qualityId: Int,
+    index: Int,
+    jobDir: URL
+  ) async throws -> Int64 {
     guard let url = Self.segmentURL(uuid: uuid, qualityId: qualityId, index: index) else {
       throw DownloadError.segment(index: index, status: 0)
     }
+    let part = BackgroundSegment(uuid: uuid, jobFolder: jobDir, index: index)
     var lastStatus = 0
     for attempt in 1...3 {
       try Task.checkCancellation()
-      var request = URLRequest(url: url)
-      request.timeoutInterval = 60
-      request.setValue("SkillCappedLocal/2.0 (iOS)", forHTTPHeaderField: "User-Agent")
       do {
-        let (data, response) = try await URLSession.shared.data(for: request)
-        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
-        lastStatus = status
-        if (200..<300).contains(status) {
-          guard !data.isEmpty else { throw DownloadError.emptySegment(index: index) }
-          return data
-        }
-        // 403 past the tail is expected; 403 in the middle is throttling.
-        guard status == 403 || status == 408 || status == 429 || status >= 500 else {
-          throw DownloadError.segment(index: index, status: status)
-        }
+        return try await BackgroundTransfer.shared.fetch(url, part: part)
       } catch let error as DownloadError {
-        if case .emptySegment = error { throw error }
-        lastStatus = lastStatus == 0 ? -1 : lastStatus
+        switch error {
+        case .emptySegment, .cancelled, .qualityUnavailable, .noSegments, .storage:
+          throw error
+        case let .segment(_, status):
+          lastStatus = status
+          // 403 past the tail is expected; 403 in the middle is throttling.
+          guard status == 403 || status == 408 || status == 429 || status >= 500 else {
+            throw error
+          }
+        }
       } catch is CancellationError {
         throw DownloadError.cancelled
       } catch {
@@ -385,7 +400,7 @@ actor SegmentDownloader {
     size(of: url) > 0
   }
 
-  private static func size(of url: URL) -> Int64 {
+  static func size(of url: URL) -> Int64 {
     let values = try? url.resourceValues(forKeys: [.fileSizeKey])
     return Int64(values?.fileSize ?? 0)
   }

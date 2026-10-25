@@ -9,8 +9,8 @@ options:
 settings:
   base:
     SWIFT_VERSION: "5.0"
-    MARKETING_VERSION: "1.16.2"
-    CURRENT_PROJECT_VERSION: "8"
+    MARKETING_VERSION: "1.17.0"
+    CURRENT_PROJECT_VERSION: "9"
 
 targets:
   SkillCappedLocal:
@@ -20,6 +20,10 @@ targets:
       - path: SkillCappedLocal
         excludes:
           - "Info.plist"
+      - path: Shared
+    dependencies:
+      - target: SkillCappedLocalWidget
+        embed: true
     settings:
       base:
         PRODUCT_NAME: SkillCappedLocal
@@ -38,6 +42,30 @@ targets:
         - SkillCappedLocalTests
         - SkillCappedLocalUITests
       gatherCoverageData: false
+
+  # The lock-screen face of the queue. Only a Live Activity, so the gallery has
+  # no home-screen widget to offer — which is the point.
+  SkillCappedLocalWidget:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: SkillCappedLocalWidget
+        excludes:
+          - "Info.plist"
+      - path: Shared
+    settings:
+      base:
+        PRODUCT_NAME: SkillCappedLocalWidget
+        PRODUCT_BUNDLE_IDENTIFIER: com.kyros.skillcappedlocal.widget
+        INFOPLIST_FILE: SkillCappedLocalWidget/Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+        TARGETED_DEVICE_FAMILY: "1,2"
+        SKIP_INSTALL: YES
+        APPLICATION_EXTENSION_API_ONLY: YES
+        ENABLE_USER_SCRIPT_SANDBOXING: YES
+        CODE_SIGN_STYLE: Manual
+        CODE_SIGN_IDENTITY: ""
+        DEVELOPMENT_TEAM: ""
 
   SkillCappedLocalTests:
     type: bundle.unit-test
@@ -59,7 +87,7 @@ targets:
     type: bundle.ui-testing
     platform: iOS
     sources:
-      - SkillCappedLocalUITests
+      - path: SkillCappedLocalUITests
     dependencies:
       - target: SkillCappedLocal
     settings:

@@ -56,8 +56,15 @@ struct DownloadTask: Codable, Identifiable, Hashable {
 ///
 /// One lesson at a time, because the point is to leave the phone responsive
 /// while a course comes down; each lesson still fetches four parts at once.
+///
+/// The parts are fetched by `BackgroundTransfer`, so a lesson keeps arriving
+/// while the app is suspended, and the system wakes the app to hand each one
+/// over. `wake()` is that path — a relaunch in the background has no scene to
+/// start the queue from.
 @MainActor
 final class DownloadManager: ObservableObject {
+  static let shared = DownloadManager()
+
   @Published private(set) var tasks: [DownloadTask] = []
   @Published private(set) var bytesPerSecond: Double = 0
 
@@ -82,6 +89,10 @@ final class DownloadManager: ObservableObject {
   private var running: String?
   private var saveTask: Task<Void, Never>?
   private var sample: (at: Date, bytes: Int64)?
+
+  private let activity = DownloadActivityController()
+  /// Ends when this lesson stops running, however it stops.
+  private var lease: BackgroundLease?
 
   init(root: URL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]) {
     self.root = root
@@ -174,7 +185,10 @@ final class DownloadManager: ObservableObject {
       runner?.cancel()
       runner = nil
       running = nil
+      lease?.end()
+      lease = nil
     }
+    BackgroundTransfer.shared.cancelLesson(uuid)
     guard let index = tasks.firstIndex(where: { $0.uuid == uuid }) else { return }
     if tasks[index].state == .downloading || tasks[index].state == .remuxing || tasks[index].state == .queued {
       tasks[index].state = .paused
@@ -197,7 +211,10 @@ final class DownloadManager: ObservableObject {
       runner?.cancel()
       runner = nil
       running = nil
+      lease?.end()
+      lease = nil
     }
+    BackgroundTransfer.shared.cancelLesson(uuid)
     tasks.removeAll { $0.uuid == uuid }
     try? FileManager.default.removeItem(at: scratch.appendingPathComponent(uuid, isDirectory: true))
     persist()
@@ -306,6 +323,8 @@ final class DownloadManager: ObservableObject {
           }
         )
         self.finish(uuid, outcome: outcome)
+      } catch DownloadError.cancelled {
+        self.interrupt(uuid, reason: nil)
       } catch is CancellationError {
         self.interrupt(uuid, reason: nil)
       } catch let error as DownloadError {
@@ -313,6 +332,38 @@ final class DownloadManager: ObservableObject {
       } catch {
         self.interrupt(uuid, reason: error.localizedDescription)
       }
+    }
+  }
+
+  /// The system woke the app because a background transfer finished: the part is
+  /// already on disk, so the lock screen is told the queue moved on.
+  ///
+  /// Nothing is started from here on purpose. A relaunch in the background has no
+  /// scene, so the library folder the queue writes into has not been resolved yet
+  /// — beginning a lesson would put it in the app's own Documents instead of where
+  /// the user keeps the library. The queue starts itself the next time the app is
+  /// opened; the parts already fetched are skipped.
+  func wake() {
+    refreshActivity()
+  }
+
+  /// Merging the parts and moving the lesson into the library is ordinary work in
+  /// this process, unlike the transfers, which the system owns. It is also the one
+  /// moment a lesson can freeze half-done: once the last part has landed there are
+  /// no more session events to wake the app for, so the merge needs a lease of its
+  /// own, taken when it starts rather than with the whole lesson.
+  private func holdOpenForMerge() {
+    guard lease == nil else { return }
+    lease = BackgroundLease("merge")
+  }
+
+  /// The lock screen follows the queue, not the other way round: it is redrawn
+  /// from the tasks whenever they change, and ends when nothing is left.
+  private func refreshActivity() {
+    if let summary = QueueSummary.of(tasks) {
+      activity.show(summary)
+    } else {
+      activity.finish()
     }
   }
 
@@ -324,6 +375,8 @@ final class DownloadManager: ObservableObject {
     tasks[index].bytes = progress.bytes
     tasks[index].state = progress.phase == .remuxing ? .remuxing : .downloading
     updateSpeed(bytes: progress.bytes)
+    if progress.phase == .remuxing { holdOpenForMerge() }
+    refreshActivity()
   }
 
   private func updateSpeed(bytes: Int64) {
@@ -348,6 +401,8 @@ final class DownloadManager: ObservableObject {
       runner = nil
       bytesPerSecond = 0
     }
+    lease?.end()
+    lease = nil
     if let index = tasks.firstIndex(where: { $0.uuid == uuid }) {
       tasks[index].state = .ready
       tasks[index].actualQuality = outcome.qualityLabel
@@ -369,6 +424,8 @@ final class DownloadManager: ObservableObject {
       runner = nil
       bytesPerSecond = 0
     }
+    lease?.end()
+    lease = nil
     if let index = tasks.firstIndex(where: { $0.uuid == uuid }),
        tasks[index].state != .paused {
       tasks[index].state = reason == nil ? .queued : .failed
@@ -392,6 +449,7 @@ final class DownloadManager: ObservableObject {
     saveTask?.cancel()
     let snapshot = tasks
     let url = storeURL
+    refreshActivity()
     saveTask = Task {
       try? await Task.sleep(for: .milliseconds(300))
       guard !Task.isCancelled else { return }
