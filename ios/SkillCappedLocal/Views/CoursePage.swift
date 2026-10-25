@@ -117,6 +117,17 @@ extension Array where Element == CourseLesson {
     if seconds > 0 { parts.append(Format.clock(seconds)) }
     return parts.joined(separator: " · ")
   }
+
+  /// Whether every lesson of the course is on this phone. A course page keeps its
+  /// download pill for as long as this is false.
+  var isComplete: Bool { allSatisfy { $0.local != nil } }
+
+  /// What the course's download has left to ask for: a lesson this phone has not
+  /// got and nothing is fetching — including one whose download failed, because
+  /// the queue revives a failed task.
+  var missingItems: [CatalogItem] {
+    filter { $0.local == nil && !$0.state.isBusy }.compactMap(\.item)
+  }
 }
 
 /// Everything a course page draws, whichever surface opened it.
@@ -241,11 +252,16 @@ struct CoursePage: View {
     rows.compactMap(\.local)
   }
 
-  /// What the catalogue lists that this phone has not got and is not already
-  /// fetching: the lessons the hero's download is for.
-  private var missing: [CatalogItem] {
-    rows.filter { $0.local == nil && $0.state == .remote }.compactMap(\.item)
-  }
+  /// Whether the course still has a lesson this phone has not got. The hero keeps
+  /// its download pill for as long as this is true, and greys it out while the
+  /// queue is already fetching the rest — a pill that vanishes as soon as a
+  /// download starts reads as a course that is finished.
+  private var isIncomplete: Bool { !rows.isComplete }
+
+  /// What that pill would ask for right now: a lesson this phone has not got and
+  /// nothing is fetching yet — a remote one, or one whose download *failed*,
+  /// which is what re-queueing is for (`enqueue` revives it).
+  private var missing: [CatalogItem] { rows.missingItems }
 
   var body: some View {
     GeometryReader { proxy in
@@ -340,8 +356,9 @@ struct CoursePage: View {
   /// Two things a course can offer, in the order a thumb expects: *Play* when
   /// any lesson is here, and the download for whatever is not. A library course
   /// has nothing missing, so it only ever shows Play — and a catalogue course
-  /// that nothing has come down for shows only Download. The same rule, so the
-  /// two surfaces cannot disagree about which pill a course has earned.
+  /// that nothing has come down for shows only Download. The download stays for
+  /// as long as the course is incomplete, greyed out while the queue is already
+  /// fetching the rest, so starting a download never looks like finishing one.
   @ViewBuilder private func heroActions(compact: Bool) -> some View {
     HStack(spacing: 8) {
       if let first = playable.first {
@@ -354,13 +371,15 @@ struct CoursePage: View {
         .accessibilityLabel("Play \(page.title) from the first lesson")
       }
 
-      if !missing.isEmpty {
+      if isIncomplete {
         Button {
           downloadMissing()
         } label: {
           CoursePill(title: "Download", systemImage: "arrow.down.circle.fill", compact: compact)
         }
         .buttonStyle(.plain)
+        .disabled(missing.isEmpty)
+        .opacity(missing.isEmpty ? 0.55 : 1)
         .accessibilityLabel("Download the missing lessons of \(page.title)")
       }
     }

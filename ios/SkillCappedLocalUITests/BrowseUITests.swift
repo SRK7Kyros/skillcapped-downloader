@@ -79,12 +79,19 @@ final class BrowseUITests: XCTestCase {
 
     let play = app.buttons["Play Why You Suck at ADC (ADC) from the first lesson"]
     XCTAssertTrue(play.waitForExistence(timeout: 15), "a course already here should offer Play on its hero")
+
+    // Two of the demo course's three lessons are here, so the course is only
+    // partly downloaded: the hero must still offer the download for the rest.
+    let download = app.buttons["Download the missing lessons of Why You Suck at ADC (ADC)"]
+    XCTAssertTrue(download.waitForExistence(timeout: 10), "a partly downloaded course should still offer the whole-course download")
+
     XCTAssertTrue(app.staticTexts["Not On This Phone"].waitForExistence(timeout: 10), "the catalogue's lessons should be listed")
 
     XCUIDevice.shared.orientation = .landscapeLeft
     defer { XCUIDevice.shared.orientation = .portrait }
 
     XCTAssertTrue(play.waitForExistence(timeout: 10), "the pinned Play should survive landscape")
+    XCTAssertTrue(download.waitForExistence(timeout: 10), "the download should stay in the pinned hero too")
     XCTAssertTrue(app.staticTexts["Not On This Phone"].exists, "the lessons should still be listed")
 
     let shot = XCTAttachment(screenshot: app.screenshot())
