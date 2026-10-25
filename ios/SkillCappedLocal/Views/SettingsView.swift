@@ -71,7 +71,7 @@ struct SettingsView: View {
         } header: {
           Text("Live Activity")
         } footer: {
-          Text("The lock-screen card is drawn by a widget inside this app's bundle, so when it does not appear there is nothing to see in the app. This says which link is missing; the button asks for a card immediately and reports what iOS answered.")
+          Text("The lock-screen card is drawn by a widget inside this app's bundle, so when it does not appear there is nothing to see in the app. This says which link is missing; the button asks for a card immediately and reports what iOS answered.\n\nIf a card is live here but nothing is on the lock screen, add Extension check from the widget gallery: the same extension draws both, so one that is missing there means iOS never loaded the extension at all — which is the installer's job, not the app's.")
         }
 
         Section("Library") {

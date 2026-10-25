@@ -81,15 +81,17 @@ final class LiveActivityDiagnosticsTests: XCTestCase {
       extensionPresent: true,
       extensionSigned: true,
       extensionIdentifier: "com.kyros.skillcappedlocal.widget",
+      extensionVersion: "1.23.2 (103)",
       appIdentifier: "com.kyros.skillcappedlocal",
       systemVersion: "27.0",
       error: nil
     )
-    XCTAssertEqual(report.facts.count, 7)
+    XCTAssertEqual(report.facts.count, 8)
     XCTAssertTrue(report.facts.contains("Cards allowed: yes"))
     XCTAssertTrue(report.facts.contains("Cards live: none"))
     XCTAssertTrue(report.facts.contains("Widget: installed, signed"))
     XCTAssertTrue(report.facts.contains("Widget id: com.kyros.skillcappedlocal.widget"))
+    XCTAssertTrue(report.facts.contains("Widget version: 1.23.2 (103)"))
     XCTAssertTrue(report.facts.contains("System: iOS 27.0"))
     XCTAssertTrue(report.facts.contains("Last refusal: none"))
     XCTAssertEqual(report.verdict, .idle)
@@ -108,5 +110,27 @@ final class LiveActivityDiagnosticsTests: XCTestCase {
     try Data("sealed".utf8).write(to: seal.appendingPathComponent("CodeResources"))
 
     XCTAssertTrue(LiveActivityInspector.isSigned(root))
+  }
+
+  func testTheInstalledWidgetReportsItsOwnVersion() throws {
+    let root = FileManager.default.temporaryDirectory
+      .appendingPathComponent("ver-\(UUID().uuidString).appex")
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+
+    XCTAssertNil(LiveActivityInspector.version(root))
+
+    let info: [String: Any] = [
+      "CFBundleShortVersionString": "1.23.2",
+      "CFBundleVersion": "103"
+    ]
+    let data = try PropertyListSerialization.data(
+      fromPropertyList: info,
+      format: .xml,
+      options: 0
+    )
+    try data.write(to: root.appendingPathComponent("Info.plist"))
+
+    XCTAssertEqual(LiveActivityInspector.version(root), "1.23.2 (103)")
   }
 }

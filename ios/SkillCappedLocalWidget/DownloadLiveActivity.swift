@@ -6,6 +6,7 @@ import WidgetKit
 struct SkillCappedWidgetBundle: WidgetBundle {
   var body: some Widget {
     DownloadLiveActivity()
+    ExtensionCheckWidget()
   }
 }
 

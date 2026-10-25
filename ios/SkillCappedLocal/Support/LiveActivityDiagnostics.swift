@@ -70,6 +70,7 @@ struct LiveActivityReport {
   let extensionPresent: Bool
   let extensionSigned: Bool
   let extensionIdentifier: String?
+  let extensionVersion: String?
   let appIdentifier: String?
   let systemVersion: String
   let error: String?
@@ -94,6 +95,7 @@ struct LiveActivityReport {
       "Cards live: \(cards.isEmpty ? "none" : cards.joined(separator: ", "))",
       "Widget: \(extensionPresent ? "installed" : "missing")\(extensionSigned ? ", signed" : ", unsigned")",
       "Widget id: \(extensionIdentifier ?? "—")",
+      "Widget version: \(extensionVersion ?? "—")",
       "App id: \(appIdentifier ?? "—")",
       "System: iOS \(systemVersion)",
       "Last refusal: \(error ?? "none")"
@@ -112,6 +114,7 @@ enum LiveActivityInspector {
       extensionPresent: url != nil,
       extensionSigned: url.map(isSigned) ?? false,
       extensionIdentifier: url.flatMap { Bundle(url: $0)?.bundleIdentifier },
+      extensionVersion: url.flatMap(version),
       appIdentifier: Bundle.main.bundleIdentifier,
       systemVersion: UIDevice.current.systemVersion,
       error: error
@@ -133,6 +136,22 @@ enum LiveActivityInspector {
     FileManager.default.fileExists(
       atPath: url.appendingPathComponent("_CodeSignature/CodeResources").path
     )
+  }
+
+  /// What the installed widget calls itself. An install that replaced the app but
+  /// kept an older extension shows here, which is otherwise invisible.
+  static func version(_ url: URL) -> String? {
+    guard let info = Bundle(url: url)?.infoDictionary else { return nil }
+    let short = info["CFBundleShortVersionString"] as? String
+    let build = info["CFBundleVersion"] as? String
+    switch (short, build) {
+    case let (short?, build?):
+      return "\(short) (\(build))"
+    case let (short?, nil):
+      return short
+    default:
+      return nil
+    }
   }
 
   static func stateName(_ activity: Activity<DownloadActivityAttributes>) -> String {
