@@ -12,6 +12,15 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
   ) -> Bool {
     BackgroundJournal.shared.record("launch (\(Self.name(of: application.applicationState)))")
+    if application.backgroundRefreshStatus == .denied {
+      // The one reason no transfer event can ever reach this app. iOS will not
+      // relaunch a suspended app for a background session while Background App
+      // Refresh is off, so a lesson handed over here is never handed back and the
+      // queue stops on it with nothing in the app able to say why.
+      BackgroundJournal.shared.record(
+        "background app refresh is OFF — iOS will not wake the app for transfers"
+      )
+    }
     BackgroundTransfer.shared.onUnattendedPart = {
       BackgroundJournal.shared.record("part landed with nobody waiting")
       Task { @MainActor in DownloadManager.shared.wake() }

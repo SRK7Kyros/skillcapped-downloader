@@ -327,6 +327,12 @@ actor SegmentDownloader {
         bytes += settled.size
         if settles.count < 6 { settles.append(settled.ms) }
         onProgress(DownloadProgress(phase: .downloading, segmentsDone: done, segmentsTotal: total, bytes: bytes))
+        // One line per window, not per part. A queue that stops mid-lesson has to
+        // say where it stopped, and a journal that ends between two of these is a
+        // different fault from one that ends before the first.
+        if done % Self.partWindow == 0 {
+          BackgroundJournal.shared.record("\(done)/\(total) parts landed")
+        }
         try Task.checkCancellation()
       }
     }
@@ -349,7 +355,7 @@ actor SegmentDownloader {
   ) async throws -> Int64 {
     var identifier = part.task
     var lastStatus = 0
-    for attempt in 1...3 {
+    for attempt in 1...TransferWatchdog.attempts {
       do {
         return try await BackgroundTransfer.shared.wait(for: identifier)
       } catch let error as DownloadError {
@@ -367,8 +373,13 @@ actor SegmentDownloader {
         throw DownloadError.cancelled
       } catch {
         lastStatus = -1
+        if TransferWatchdog.isLost(error) {
+          BackgroundJournal.shared.record(
+            "part \(part.index) hand-over \(attempt) of \(TransferWatchdog.attempts) went unanswered"
+          )
+        }
       }
-      guard attempt < 3 else { break }
+      guard attempt < TransferWatchdog.attempts else { break }
       try? await Task.sleep(for: .milliseconds(300 * attempt))
       try Task.checkCancellation()
       guard let url = Self.segmentURL(uuid: uuid, qualityId: qualityId, index: part.index),

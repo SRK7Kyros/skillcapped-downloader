@@ -69,14 +69,16 @@ final class BackgroundTransfer: NSObject, URLSessionDownloadDelegate, @unchecked
   private var inFlight: Set<Int> = []
   private var eventsCompletion: (() -> Void)?
 
-  private lazy var session: URLSession = {
-    let config = URLSessionConfiguration.background(withIdentifier: Self.identifier)
+  private lazy var session: URLSession = Self.makeSession(delegate: self)
+
+  private static func makeSession(delegate: URLSessionDelegate) -> URLSession {
+    let config = URLSessionConfiguration.background(withIdentifier: identifier)
     config.sessionSendsLaunchEvents = true
     config.isDiscretionary = false
     config.httpMaximumConnectionsPerHost = SegmentDownloader.segmentConcurrency
     config.timeoutIntervalForRequest = 60
-    return URLSession(configuration: config, delegate: self, delegateQueue: nil)
-  }()
+    return URLSession(configuration: config, delegate: delegate, delegateQueue: nil)
+  }
 
   /// Hand over the completion handler the system gives the app delegate, so the
   /// app is told it may suspend the moment this session's events are done.
@@ -121,8 +123,24 @@ final class BackgroundTransfer: NSObject, URLSessionDownloadDelegate, @unchecked
   }
 
   /// Await a part that was already handed over.
-  func wait(for identifier: Int) async throws -> Int64 {
-    try await withTaskCancellationHandler {
+  ///
+  /// Bounded on purpose. The system owns the transfer, so the app is never told
+  /// when one is dropped — and a wait with no deadline is a queue that never moves
+  /// again (see `TransferWatchdog`). When the deadline passes the task is cancelled
+  /// and the waiter answered with a timeout, which the caller retries as a fresh
+  /// hand-over.
+  func wait(
+    for identifier: Int,
+    within deadline: Duration = TransferWatchdog.deadline
+  ) async throws -> Int64 {
+    let watchdog = Task { [weak self] in
+      // A cancelled sleep means the part came back in time, so there is nothing to
+      // expire — falling through here would kill a transfer that just succeeded.
+      do { try await Task.sleep(for: deadline) } catch { return }
+      self?.expire(identifier)
+    }
+    defer { watchdog.cancel() }
+    return try await withTaskCancellationHandler {
       try await withCheckedThrowingContinuation { continuation in
         lock.lock()
         if let outcome = landed.removeValue(forKey: identifier) {
@@ -143,6 +161,29 @@ final class BackgroundTransfer: NSObject, URLSessionDownloadDelegate, @unchecked
     } onCancel: {
       cancel(identifier)
     }
+  }
+
+  /// The deadline passed with the part still in the system's hands: stop the
+  /// transfer and answer its waiter with a timeout, so the lesson hands the part
+  /// over again instead of waiting for a task that is not coming back.
+  ///
+  /// Answering exactly once is the whole job — a continuation resumed here must not
+  /// also be resumed by a `settle` that arrives a moment later, which is why the
+  /// waiter is taken out of the table while the lock is held.
+  private func expire(_ identifier: Int) {
+    lock.lock()
+    let waiter = waiters.removeValue(forKey: identifier)
+    let task = transfers.removeValue(forKey: identifier)
+    inFlight.remove(identifier)
+    lock.unlock()
+    guard let waiter else { return }
+    let part = task.flatMap { BackgroundSegment.decode($0.taskDescription)?.index }
+    BackgroundJournal.shared.record(
+      "part \(part.map { String($0) } ?? "-") gave no answer in "
+        + "\(TransferWatchdog.deadline.components.seconds) s — handing it over again"
+    )
+    task?.cancel()
+    waiter.resume(throwing: URLError(.timedOut))
   }
 
   func cancel(_ identifier: Int) {
@@ -266,5 +307,25 @@ final class BackgroundTransfer: NSObject, URLSessionDownloadDelegate, @unchecked
     case let .success(size): waiter.resume(returning: size)
     case let .failure(error): waiter.resume(throwing: error)
     }
+  }
+
+  /// A session that has been invalidated owns nothing any more: every task it was
+  /// running is gone, and a waiter left behind would freeze the queue for the rest
+  /// of the process's life, because nothing else ever settles it. Answer them all
+  /// now, then build a fresh session so the next hand-over has somewhere to go.
+  func urlSession(_ session: URLSession, didBecomeInvalidWithError error: Error?) {
+    BackgroundJournal.shared.record(
+      "transfer session invalidated: \(error?.localizedDescription ?? "no reason given")"
+    )
+    let reason = error ?? URLError(.cancelled)
+    lock.lock()
+    let pending = waiters
+    waiters.removeAll()
+    inFlight.removeAll()
+    transfers.removeAll()
+    lock.unlock()
+    for (_, waiter) in pending { waiter.resume(throwing: reason) }
+    guard self.session === session else { return }
+    self.session = Self.makeSession(delegate: self)
   }
 }
