@@ -30,6 +30,18 @@ struct QueueSummary: Equatable {
     )
   }
 
+  /// Numbers for a request made with nothing to download — the Settings readout's
+  /// own card, so a refusal can be provoked and read while the queue is idle.
+  static let preview = QueueSummary(
+    lessonsLeft: 1,
+    segmentsDone: 42,
+    segmentsTotal: 100,
+    bytesDone: 12_000_000,
+    currentTitle: "Card check",
+    currentCourse: "Live Activity",
+    paused: false
+  )
+
   /// `nil` when nothing is left to fetch, which is when the activity ends.
   static func of(_ tasks: [DownloadTask]) -> QueueSummary? {
     let queue = tasks.filter(\.isActive).sorted { $0.createdAt < $1.createdAt }

@@ -7,6 +7,7 @@ struct SettingsView: View {
   @Environment(\.dismiss) private var dismiss
 
   @State private var picking = false
+  @State private var report: LiveActivityReport?
 
   var body: some View {
     NavigationStack {
@@ -51,6 +52,28 @@ struct SettingsView: View {
           Text("Discover fetches the site's own catalogue and pulls a lesson straight onto the phone; it lands in the folder above, in the same Courses, Videos and Commentaries layout the desktop build writes.")
         }
 
+        Section {
+          if let report {
+            Text(report.verdict.sentence)
+              .font(.footnote.weight(.semibold))
+              .foregroundStyle(Palette.ink)
+              .fixedSize(horizontal: false, vertical: true)
+            ForEach(report.facts, id: \.self) { fact in
+              Text(fact)
+                .font(.caption2.monospaced())
+                .foregroundStyle(Palette.inkDim)
+            }
+          }
+          Button("Start the card now") {
+            downloads.startActivityNow()
+            report = downloads.liveActivityReport()
+          }
+        } header: {
+          Text("Live Activity")
+        } footer: {
+          Text("The lock-screen card is drawn by a widget inside this app's bundle, so when it does not appear there is nothing to see in the app. This says which link is missing; the button asks for a card immediately and reports what iOS answered.")
+        }
+
         Section("Library") {
           if let scan = store.scan {
             LabeledContent("Lessons", value: "\(scan.lessonCount)")
@@ -73,6 +96,7 @@ struct SettingsView: View {
       }
       .scrollContentBackground(.hidden)
       .background(Palette.bg)
+      .onAppear { report = downloads.liveActivityReport() }
       .navigationTitle("Library")
       .navigationBarTitleDisplayMode(.inline)
       .toolbar {

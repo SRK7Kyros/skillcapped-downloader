@@ -419,6 +419,19 @@ final class DownloadManager: ObservableObject {
     activityTrouble = activity.trouble
   }
 
+  /// The Settings readout's button: ask for a card right now, with the queue's own
+  /// numbers if there is a queue and a preview otherwise, then report what iOS
+  /// said. Asking in the foreground is the only way iOS allows, so a tap is the
+  /// one moment a refusal can be observed directly.
+  func startActivityNow() {
+    activity.show(QueueSummary.of(tasks) ?? .preview)
+    activityTrouble = activity.trouble
+  }
+
+  func liveActivityReport() -> LiveActivityReport {
+    LiveActivityInspector.read(error: activityTrouble)
+  }
+
   /// A part landed and nothing else is in the air. The next batch is handed over
   /// from a job that has not run yet, and with no transfer left in flight the
   /// system has nothing to wake the app for — so a course left alone would sit
