@@ -292,7 +292,16 @@ on the phone itself, into the same folders the desktop build writes.
   directions, so leaving the app is the moment the lesson in flight gets one;
   renewed at the next part that settles once the ~30 s grant expires; and handed
   over to the merge's own assertion when the last part lands, since from then on
-  there is nothing of the system's left to wake the app for.
+  there is nothing of the system's left to wake the app for. **A renewal asks the
+  lease whether iOS is still honouring it, never whether one exists**
+  (`Support/BackgroundHold.swift`): the system takes an assertion back on its own
+  schedule while the lease object stays behind, so "is the slot occupied?" answered
+  yes for a lease that had expired forty seconds earlier — every later renewal
+  returned at once and a 380-part lesson stopped at 208 parts, one window per
+  system wake. The expiry line in the journal now carries the grant's real length
+  (`lease expired lesson after 31.4 s`), which is what tells a working renewal from
+  an app whose background budget is spent: a grant lasting a second means renewing
+  buys nothing and the queue is back to what the system fetches on its own.
 - **A part the system never hands back cannot stop the queue.** Every part a
   lesson awaits lives inside the one task `pump` runs, and `pump` refuses to start
   anything while that task is alive, so a wait that never returns was the whole

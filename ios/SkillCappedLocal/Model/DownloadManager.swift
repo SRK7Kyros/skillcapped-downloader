@@ -124,19 +124,20 @@ final class DownloadManager: ObservableObject {
   private var sample: (at: Date, bytes: Int64)?
 
   private let activity = DownloadActivityController()
-  /// The merge's lease: taken when the last part has landed, because from that
+  /// The merge's hold: taken when the last part has landed, because from that
   /// moment there is nothing of the system's left in the air to wake the app for.
-  private var mergeLease: BackgroundLease?
+  private let mergeHold = BackgroundHold()
   /// Keeps this process running for as long as a lesson is in flight.
   ///
   /// A transfer does not need it — the system owns those and they survive
   /// suspension — but the *refill* does: each window of parts is handed over by
   /// code running here, and iOS suspends an app that holds no assertion and then
   /// delivers the settled parts in batches tens of seconds apart (measured: one
-  /// window per 42–114 s, against 88 ms per part while awake). So the lease spans
+  /// window per 42–114 s, against 88 ms per part while awake). So the hold spans
   /// the lesson rather than its hand-over, and a lesson that outlives the ~30 s a
-  /// grant lasts takes the next one at the next part that settles.
-  private var lessonLease: BackgroundLease?
+  /// grant lasts takes the next one at the next part that settles. `renew` asks the
+  /// lease whether the system is still honouring it, never whether one exists.
+  private let lessonHold = BackgroundHold()
 
   init(root: URL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]) {
     self.root = root
@@ -429,25 +430,21 @@ final class DownloadManager: ObservableObject {
   /// no more session events to wake the app for, so the merge takes a lease of its
   /// own — a full grant from the moment it starts — in place of the lesson's.
   private func holdOpenForMerge() {
-    guard mergeLease == nil else { return }
-    lessonLease?.end()
-    lessonLease = nil
-    mergeLease = BackgroundLease("merge")
+    guard !mergeHold.isHolding else { return }
+    lessonHold.end()
+    mergeHold.renew("merge")
   }
 
   /// Keep this process running while a lesson is in flight, or take a fresh grant
   /// when the previous one has expired and the app is awake again.
   private func holdAwake() {
-    guard lessonLease == nil else { return }
-    lessonLease = BackgroundLease("lesson")
+    lessonHold.renew("lesson")
   }
 
   /// Both assertions belong to the lesson that just stopped.
   private func releaseLeases() {
-    mergeLease?.end()
-    mergeLease = nil
-    lessonLease?.end()
-    lessonLease = nil
+    mergeHold.end()
+    lessonHold.end()
   }
 
   /// The lock screen follows the queue, not the other way round: it is redrawn
@@ -485,7 +482,7 @@ final class DownloadManager: ObservableObject {
       BackgroundJournal.shared.record("batch idle: nothing left to continue")
       return
     }
-    guard lessonLease == nil, mergeLease == nil else { return }
+    guard !lessonHold.isHolding, !mergeHold.isHolding else { return }
     BackgroundJournal.shared.record("batch idle: lease taken")
     holdAwake()
   }
