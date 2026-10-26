@@ -317,6 +317,23 @@ on the phone itself, into the same folders the desktop build writes.
   for the same reason. Returning to the app wakes the queue, and a launch with
   Background App Refresh off says so in the journal, because that is the one
   setting under which iOS never wakes the app for a transfer at all.
+- **A lesson that stops answering cannot stop the queue either.** The part
+  watchdog bounds one transfer; `Support/LessonStall.swift` bounds the lesson,
+  because a lesson also waits on things that are not parts — the rendition
+  listing, the part count, the merge, the move into the library — and all of them
+  run inside the same task `pump` started. Four minutes with no report at all
+  (twice the slowest gap ever measured between windows handed to a *suspended*
+  app, 42–114 s) is not a slow lesson, so the queue stops waiting on it: the
+  attempt is superseded, its transfers are cancelled, the lesson goes back in the
+  queue and fetches only the parts not already on disk. A merge is given fifteen
+  minutes instead, because it reports once when it starts and once when it lands
+  and redoing one throws away the merge that was nearly finished. Twice per
+  lesson, then it is failed with `Stopped responding — no progress for N s.` so
+  the queue moves on. The timer only runs while the app is awake, so coming back
+  to it checks immediately rather than on the next tick — and that check is the
+  one that matters, because `pump` alone cannot help: the silent lesson still
+  holds the slot. Both paths write a `stall <title>: no progress for N s — …` line
+  to the journal.
 - **Quality.** The order in `Settings` is the fallback ladder — 1080p, then 720p,
   then 4K by default — and the first rendition the CDN actually publishes wins.
   A label is understood in both vocabularies, the file-name one (`2160p`) and the

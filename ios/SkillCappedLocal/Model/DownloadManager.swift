@@ -122,6 +122,21 @@ final class DownloadManager: ObservableObject {
   private var running: String?
   private var saveTask: Task<Void, Never>?
   private var sample: (at: Date, bytes: Int64)?
+  /// The attempt allowed to finish the lesson in flight. A lesson restarted for
+  /// saying nothing gets a new one, so the task it replaced can never clear the
+  /// slot the new attempt holds — which is the reason `finish`/`interrupt` take a
+  /// token at all: without it a stale callback from a superseded attempt sets
+  /// `runner = nil` while the real one still runs, and the next `pump` starts a
+  /// second lesson beside it.
+  private var attempt = UUID()
+  /// When the lesson in flight last reported anything, how many times it has been
+  /// restarted for silence, and which lesson that count belongs to (`LessonStall`).
+  private var lastProgressAt: Date?
+  private var stallRestarts = 0
+  private var stalling: String?
+  /// Watches the lesson in flight, so a queue wedged behind it recovers while the
+  /// app is open instead of waiting for a relaunch.
+  private var ticker: Task<Void, Never>?
 
   private let activity = DownloadActivityController()
   /// The merge's hold: taken when the last part has landed, because from that
@@ -340,6 +355,21 @@ final class DownloadManager: ObservableObject {
       BackgroundJournal.shared.record("pump: library not resolved")
       return
     }
+    // A row that says it is downloading while nothing is running is what a lost
+    // callback leaves behind, and nothing else would look at it again — the queue
+    // only ever starts `.queued` rows, so it would sit there for ever and every
+    // later pump would find nothing to do. Repairing it here means a wake or a
+    // foreground can always make progress, whatever happened before.
+    if runner == nil, running == nil {
+      let orphans = tasks.indices.filter {
+        tasks[$0].state == .downloading || tasks[$0].state == .remuxing
+      }
+      for index in orphans {
+        tasks[index].state = .queued
+        BackgroundJournal.shared.record("repair: \(tasks[index].title) was left mid-lesson")
+      }
+      if !orphans.isEmpty { persist() }
+    }
     // Whatever called this — a fresh start, a wake that found a lesson already in
     // flight, or the user leaving the app — the refill loop runs in this process,
     // so the assertion is taken here and held until the lesson ends (`apply`
@@ -362,7 +392,15 @@ final class DownloadManager: ObservableObject {
     tasks[index].state = .downloading
     running = uuid
     sample = nil
+    let token = UUID()
+    attempt = token
+    lastProgressAt = Date()
+    if stalling != uuid {
+      stalling = uuid
+      stallRestarts = 0
+    }
     persist()
+    startTicker()
 
     let priority = qualityPriority
     let request = next.request
@@ -386,15 +424,15 @@ final class DownloadManager: ObservableObject {
             }
           }
         )
-        self.finish(uuid, outcome: outcome)
+        self.finish(uuid, token: token, outcome: outcome)
       } catch DownloadError.cancelled {
-        self.interrupt(uuid, reason: nil)
+        self.interrupt(uuid, token: token, reason: nil)
       } catch is CancellationError {
-        self.interrupt(uuid, reason: nil)
+        self.interrupt(uuid, token: token, reason: nil)
       } catch let error as DownloadError {
-        self.interrupt(uuid, reason: error.errorDescription)
+        self.interrupt(uuid, token: token, reason: error.errorDescription)
       } catch {
-        self.interrupt(uuid, reason: error.localizedDescription)
+        self.interrupt(uuid, token: token, reason: error.localizedDescription)
       }
     }
   }
@@ -420,6 +458,10 @@ final class DownloadManager: ObservableObject {
       root = saved.url
     }
     BackgroundJournal.shared.record("wake: library \(rootIsResolved ? "known" : "unresolved")")
+    // Coming back is the moment a user expects a stalled queue to move, and `pump`
+    // alone cannot do it: the lesson that went quiet still holds the slot, so the
+    // only way out is to stop waiting on it.
+    recoverIfStalled()
     pump()
     refreshActivity()
   }
@@ -488,8 +530,12 @@ final class DownloadManager: ObservableObject {
   }
 
   private func apply(_ progress: DownloadProgress, to uuid: String) {
+    // Progress from an attempt this queue has already stopped waiting on (a stall
+    // restart, a pause, a cancel) must not write over the row the new attempt owns.
+    guard uuid == running else { return }
     guard let index = tasks.firstIndex(where: { $0.uuid == uuid }) else { return }
     guard tasks[index].state == .downloading || tasks[index].state == .remuxing else { return }
+    lastProgressAt = Date()
     tasks[index].segmentsDone = progress.segmentsDone
     tasks[index].segmentsTotal = progress.segmentsTotal
     tasks[index].bytes = progress.bytes
@@ -519,7 +565,8 @@ final class DownloadManager: ObservableObject {
     self.sample = (now, bytes)
   }
 
-  private func finish(_ uuid: String, outcome: DownloadOutcome) {
+  private func finish(_ uuid: String, token: UUID, outcome: DownloadOutcome) {
+    guard token == attempt else { return }
     // Only the task that still owns the runner may clear it: a pause or cancel
     // can start the next lesson before this one's task has wound down.
     if running == uuid {
@@ -544,7 +591,8 @@ final class DownloadManager: ObservableObject {
     pump()
   }
 
-  private func interrupt(_ uuid: String, reason: String?) {
+  private func interrupt(_ uuid: String, token: UUID, reason: String?) {
+    guard token == attempt else { return }
     if running == uuid {
       running = nil
       runner = nil
@@ -559,6 +607,79 @@ final class DownloadManager: ObservableObject {
     }
     persist()
     pump()
+  }
+
+  // MARK: - A lesson that stops answering
+
+  /// A lesson that has said nothing for `LessonStall.limit` is no longer waited on.
+  ///
+  /// Called by the ticker while a lesson is in flight and once when the app comes
+  /// back, because that is the moment a user expects the queue to move. Nothing
+  /// else in the app can rescue this: `pump` refuses to start anything while the
+  /// silent lesson's task is alive, and every await that task is sitting on belongs
+  /// to code that has already stopped responding.
+  private func recoverIfStalled() {
+    guard let uuid = running, runner != nil, let since = lastProgressAt else { return }
+    let phase = tasks.first { $0.uuid == uuid }?.state
+    let limit = phase == .remuxing ? LessonStall.mergeLimit : LessonStall.limit
+    guard LessonStall.isStalled(since: since, limit: limit) else { return }
+    let title = tasks.first { $0.uuid == uuid }?.title ?? uuid
+    let silence = Int(Date().timeIntervalSince(since))
+    let restarting = LessonStall.mayRestart(after: stallRestarts)
+    BackgroundJournal.shared.record(
+      "stall \(title): \(LessonStall.sentence(seconds: silence, restarting: restarting))"
+    )
+    stopWaiting(on: uuid, silent: silence, givingUp: !restarting)
+  }
+
+  /// Drop the lesson in flight without trusting it to wind down: the token is
+  /// replaced first, so whatever the abandoned task reports later is ignored, then
+  /// its transfers are cancelled before the queue moves on. The parts already on
+  /// disk are kept, so a restarted lesson re-fetches only what is missing.
+  private func stopWaiting(on uuid: String, silent: Int, givingUp: Bool) {
+    attempt = UUID()
+    runner?.cancel()
+    runner = nil
+    running = nil
+    sample = nil
+    bytesPerSecond = 0
+    releaseLeases()
+    BackgroundTransfer.shared.cancelLesson(uuid)
+    if !givingUp { stallRestarts += 1 }
+    if let index = tasks.firstIndex(where: { $0.uuid == uuid }),
+       tasks[index].state != .paused {
+      if givingUp {
+        tasks[index].state = .failed
+        tasks[index].error = "Stopped responding — no progress for \(silent) s."
+      } else {
+        tasks[index].state = .queued
+        tasks[index].error = nil
+      }
+    }
+    persist()
+    pump()
+  }
+
+  /// One timer for the lesson in flight. It asks `recoverIfStalled` every 20 s and
+  /// stops itself once nothing is running, so an idle queue costs nothing; a
+  /// suspended app runs no timers at all, which is why `wake` checks directly.
+  private func startTicker() {
+    guard ticker == nil else { return }
+    ticker = Task { [weak self] in
+      while true {
+        do {
+          try await Task.sleep(for: .seconds(20))
+        } catch {
+          return
+        }
+        guard let self else { return }
+        guard self.runner != nil else {
+          self.ticker = nil
+          return
+        }
+        self.recoverIfStalled()
+      }
+    }
   }
 
   // MARK: - Persistence
