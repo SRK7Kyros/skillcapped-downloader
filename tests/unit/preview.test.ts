@@ -6,6 +6,7 @@ function entry(overrides: Partial<LibraryEntry>): LibraryEntry {
   return {
     uuid: "abc123abcd",
     title: "Lesson",
+    number: null,
     qualityLabel: "1080p",
     quality: 2500,
     extension: "mp4",

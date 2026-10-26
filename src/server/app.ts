@@ -7,6 +7,7 @@ import path from "node:path"
 import { QUALITIES, buildPlaylist, qualityById, segmentUrl } from "../core/cdn.ts"
 import { loadCatalog } from "../core/catalog.ts"
 import { libraryKey, scanLibrary } from "../core/library.ts"
+import { fileNumbers } from "../core/numbering.ts"
 import { SegmentError, resolveSegments } from "../core/probe.ts"
 import { planPreview } from "../core/preview.ts"
 import { contentRange, parseByteRange } from "../core/range.ts"
@@ -64,6 +65,19 @@ class CatalogStore {
     for (const item of this.value?.items ?? []) map.set(item.id, item)
     return map
   }
+
+  /**
+   * Items for turning a file name back into a lesson. A catalogue that cannot be
+   * fetched must not take the library or the player down with it — a name that
+   * cannot be resolved only loses the id the name no longer carries.
+   */
+  async itemsForNaming(): Promise<CatalogItem[]> {
+    try {
+      return (await this.get()).items
+    } catch {
+      return this.value?.items ?? []
+    }
+  }
 }
 
 export function createHandler(context: AppContext): (request: Request) => Promise<Response> {
@@ -108,7 +122,7 @@ async function dispatch(
     case "catalog":
       return json(await catalogPayload(url, store))
     case "library":
-      return json(await libraryPayload(context))
+      return json(await libraryPayload(context, store))
     case "jobs":
       return handleJobs(request, method, rest, context, store)
     case "events":
@@ -118,9 +132,9 @@ async function dispatch(
     case "stream":
       return handleStream(request, url, rest, context, store)
     case "preview":
-      return handlePreview(url, rest, context)
+      return handlePreview(url, rest, context, store)
     case "media":
-      return handleMedia(request, url, rest, context)
+      return handleMedia(request, url, rest, context, store)
     case "segment":
       return handleSegment(request, rest)
     default:
@@ -169,8 +183,8 @@ async function catalogPayload(url: URL, store: CatalogStore) {
   }
 }
 
-async function libraryPayload(context: AppContext) {
-  const library = await scanLibrary(context.root)
+async function libraryPayload(context: AppContext, store: CatalogStore) {
+  const library = await scanLibrary(context.root, await store.itemsForNaming())
   return {
     count: library.entries.length,
     totalBytes: library.totalBytes,
@@ -242,7 +256,8 @@ async function createJobs(request: Request, context: AppContext, store: CatalogS
 
   const catalog = await store.get()
   const index = store.index()
-  const library = skipExisting ? await scanLibrary(context.root) : null
+  const numbers = fileNumbers(catalog.items)
+  const library = skipExisting ? await scanLibrary(context.root, catalog.items) : null
 
   const specs: JobSpec[] = []
   const skipped: Array<{ id: string; title: string }> = []
@@ -259,7 +274,7 @@ async function createJobs(request: Request, context: AppContext, store: CatalogS
         skipped.push({ id: spec.uuid, title: spec.title })
         continue
       }
-      specs.push(spec)
+      specs.push({ ...spec, number: numbers.get(spec.uuid) ?? null })
     }
   }
 
@@ -350,13 +365,13 @@ async function handleStream(
   })
 }
 
-async function handlePreview(url: URL, rest: string[], context: AppContext): Promise<Response> {
+async function handlePreview(url: URL, rest: string[], context: AppContext, store: CatalogStore): Promise<Response> {
   const uuid = (rest[0] ?? "").replace(/\.(m3u8|mp4)$/i, "")
   if (!uuid) return json({ error: "A video id is required" }, 400)
 
   const quality = qualityById(Number(url.searchParams.get("quality")))?.id ?? context.flags.quality
   const durationSec = Number(url.searchParams.get("dur")) || 0
-  const library = await scanLibrary(context.root)
+  const library = await scanLibrary(context.root, await store.itemsForNaming())
 
   return json({ uuid, durationSec, ...planPreview(uuid, quality, durationSec, library.entries) })
 }
@@ -372,12 +387,12 @@ const MEDIA_TYPES: Record<string, string> = {
  * library scan produced are served — the uuid is looked up in that index rather
  * than joined into a path, so a request cannot walk out of the content folder.
  */
-async function handleMedia(request: Request, url: URL, rest: string[], context: AppContext): Promise<Response> {
+async function handleMedia(request: Request, url: URL, rest: string[], context: AppContext, store: CatalogStore): Promise<Response> {
   const uuid = (rest[0] ?? "").replace(/\.[a-z0-9]+$/i, "")
   if (!uuid) return json({ error: "A video id is required" }, 400)
 
   const wanted = url.searchParams.get("quality") ?? ""
-  const library = await scanLibrary(context.root)
+  const library = await scanLibrary(context.root, await store.itemsForNaming())
   const candidates = library.entries.filter((entry) => entry.uuid === uuid)
   const entry = (wanted ? candidates.find((candidate) => candidate.qualityLabel === wanted) : undefined) ?? candidates[0]
   if (!entry) return json({ error: "That video is not on disk." }, 404)

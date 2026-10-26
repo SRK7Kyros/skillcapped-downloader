@@ -507,12 +507,12 @@ struct CoursePage: View {
       return
     }
     guard let item = row.item else { return }
-    downloads.enqueue([item.downloadRequest(courseTitle: page.title)], quality: nil)
+    downloads.enqueue([item.downloadRequest(courseTitle: page.title, catalog: store.catalog)], quality: nil)
   }
 
   private func downloadMissing() {
     guard !missing.isEmpty else { return }
-    downloads.enqueue(missing.map { $0.downloadRequest(courseTitle: page.title) }, quality: nil)
+    downloads.enqueue(missing.map { $0.downloadRequest(courseTitle: page.title, catalog: store.catalog) }, quality: nil)
   }
 
   // MARK: - The two file actions

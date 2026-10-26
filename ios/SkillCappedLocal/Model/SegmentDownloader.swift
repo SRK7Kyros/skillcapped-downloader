@@ -9,6 +9,9 @@ struct DownloadRequest: Codable, Hashable {
   let category: String
   let courseTitle: String?
   let durationSec: Int
+  /// Where the lesson sits in its collection — the number its file name starts
+  /// with. Absent when the catalogue could not place it.
+  var number: FileNumber? = nil
 
   var shape: DownloadShape {
     DownloadShape(kind: kind, title: title, role: role, category: category, courseTitle: courseTitle)
@@ -212,7 +215,7 @@ actor SegmentDownloader {
     let destination = DownloadPlan.destination(
       root: destinationRoot,
       shape: request.shape,
-      id: request.uuid,
+      number: request.number,
       qualityLabel: label,
       extension: "ts"
     )

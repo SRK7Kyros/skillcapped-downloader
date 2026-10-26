@@ -13,7 +13,30 @@ final class DownloadNameTests: XCTestCase {
     let name = DownloadName.parse("Random lesson.mp4")
     XCTAssertEqual(name.title, "Random lesson")
     XCTAssertNil(name.id)
+    XCTAssertNil(name.number)
     XCTAssertNil(name.quality)
+  }
+
+  func testParsesANumberedName() {
+    let name = DownloadName.parse("02 - What's Next 1080p.ts")
+    XCTAssertEqual(name.title, "What's Next")
+    XCTAssertEqual(name.number, 2)
+    XCTAssertNil(name.id)
+    XCTAssertEqual(name.quality, "1080p")
+  }
+
+  func testALegacyNameWinsOverTheNumberedShape() {
+    let name = DownloadName.parse("3 - Wave Control [abcdef123] 1080p.mp4")
+    XCTAssertEqual(name.id, "abcdef123")
+    XCTAssertNil(name.number)
+    XCTAssertEqual(name.quality, "1080p")
+  }
+
+  func testTheLastQualityTokenNamesTheFile() {
+    let name = DownloadName.parse("3 - 1440p Settings Worth Changing 1080p.mp4")
+    XCTAssertEqual(name.title, "1440p Settings Worth Changing")
+    XCTAssertEqual(name.number, 3)
+    XCTAssertEqual(name.quality, "1080p")
   }
 
   func testIgnoresAnUnknownQuality() {

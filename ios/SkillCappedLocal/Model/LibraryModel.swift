@@ -10,6 +10,8 @@ struct Lesson: Identifiable, Hashable {
   let bytes: Int64
   let modified: Date?
   let itemId: String?
+  /// The number taken from the file name, when the name carries one.
+  var number: Int? = nil
   let needsDownload: Bool
   /// The poster the site prints for this lesson. It matters most for a transport
   /// stream: iOS cannot decode a frame out of one, so without the hosted poster a

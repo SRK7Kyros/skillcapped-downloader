@@ -18,7 +18,7 @@ import type { ItemKind } from "../types/catalog.ts"
 import { QUALITIES, qualityLabel, segmentUrl } from "./cdn.ts"
 import { RemuxError, probeDuration, remuxToMp4 } from "./ffmpeg.ts"
 import { Semaphore, fetchWithRetry } from "./http.ts"
-import { destinationPath, type DownloadShape } from "./naming.ts"
+import { destinationPath, type DownloadShape, type FileNumber } from "./naming.ts"
 import { SegmentError, qualityAvailable, resolveSegmentCount } from "./probe.ts"
 
 export type DownloadRequest = DownloadShape & {
@@ -27,6 +27,8 @@ export type DownloadRequest = DownloadShape & {
   /** The media uuid (lesson, commentary or course video). */
   uuid: string
   durationSec: number
+  /** Position in its collection — the leading number of the file name. */
+  number?: FileNumber | null
   quality: number
   remux: boolean
 }
@@ -141,7 +143,7 @@ export async function runDownload(
 
     const tsSize = Bun.file(mergedTs).size
     const extension = request.remux && context.ffmpeg ? "mp4" : "ts"
-    const destination = destinationPath(context.contentDir, { ...request, id: request.uuid }, quality, extension)
+    const destination = destinationPath(context.contentDir, request, quality, extension)
     await mkdir(path.dirname(destination), { recursive: true })
 
     // 4. Remux, or keep the transport stream.
@@ -171,7 +173,7 @@ export async function runDownload(
         if (signal.aborted) throw error
         // Keep the perfectly good transport stream instead of nothing — under a
         // `.ts` name, because that is what the bytes actually are.
-        const fallback = destinationPath(context.contentDir, { ...request, id: request.uuid }, quality, "ts")
+        const fallback = destinationPath(context.contentDir, request, quality, "ts")
         await Bun.write(fallback, Bun.file(mergedTs))
         await rm(partial, { force: true }).catch(() => {})
         await rm(jobDir, { recursive: true, force: true })

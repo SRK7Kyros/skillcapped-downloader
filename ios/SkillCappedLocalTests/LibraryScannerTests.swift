@@ -277,4 +277,27 @@ final class LibraryScannerTests: XCTestCase {
     XCTAssertNil(CatalogIndex.decode(Data("{}".utf8)))
     XCTAssertNil(CatalogIndex.decode(Data("not json".utf8)))
   }
+
+  /// A downloaded file is named `<NN> - <Title> <quality>` and carries no id, so
+  /// the folder and the title are the only things that say which lesson it is.
+  func testANumberedNameIsReadBackIntoItsLesson() throws {
+    try touch("Courses/adc/Wave Control/2 - Second Lesson 1080p.ts")
+    try touch("Courses/adc/Wave Control/1 - First Lesson 1080p.ts")
+
+    let json = """
+    {"generatedAt": 1700000000000, "items": [
+      {"id":"course1","kind":"course","title":"Wave Control","role":"adc","lessonIds":["bbbbbb2222","aaaaaa1111"]},
+      {"id":"aaaaaa1111","kind":"video","title":"First Lesson","role":"adc","courseTitle":"Wave Control","durationSec":600},
+      {"id":"bbbbbb2222","kind":"video","title":"Second Lesson","role":"adc","courseTitle":"Wave Control","durationSec":900}
+    ]}
+    """
+    let catalog = try XCTUnwrap(CatalogIndex.decode(Data(json.utf8)))
+    let scan = LibraryScanner.scan(root: root, catalog: catalog)
+
+    let course = try XCTUnwrap(scan.courses.first)
+    XCTAssertEqual(course.lessons.map { $0.itemId ?? "" }, ["aaaaaa1111", "bbbbbb2222"], "the name's number is the order")
+    XCTAssertEqual(course.lessons.map { $0.number ?? 0 }, [1, 2])
+    XCTAssertEqual(course.lessons.first?.title, "First Lesson")
+    XCTAssertEqual(course.lessons.first?.seconds, 600)
+  }
 }

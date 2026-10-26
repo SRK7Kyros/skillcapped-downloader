@@ -11,6 +11,7 @@ import type { Tool } from "../paths.ts"
 import type { ItemKind } from "../types/catalog.ts"
 import { qualityLabel } from "./cdn.ts"
 import { runDownload } from "./downloader.ts"
+import type { FileNumber } from "./naming.ts"
 import { Emitter } from "./events.ts"
 import { createDebouncedSaver, sweepScratch } from "./jobs-store.ts"
 
@@ -33,6 +34,8 @@ export type JobRecord = {
   /** Decides the on-disk folder: category groups plain videos, courseTitle groups lessons. */
   category: string | null
   courseTitle: string | null
+  /** Position in its collection, which is what the file name starts with. */
+  number: FileNumber | null
   /** Video length from the catalogue — drives the segment-count estimate. */
   durationSec: number
   quality: number
@@ -68,6 +71,8 @@ export type JobSpec = {
   durationSec: number
   category?: string
   courseTitle?: string
+  /** Position in its collection; null when the catalogue does not place it. */
+  number?: FileNumber | null
   groupId?: string
   groupTitle?: string
 }
@@ -140,6 +145,7 @@ export class DownloadManager {
         role: spec.role,
         category: spec.category ?? null,
         courseTitle: spec.courseTitle ?? null,
+        number: spec.number ?? null,
         durationSec: spec.durationSec,
         quality,
         qualityLabel: qualityLabel(quality),
@@ -281,6 +287,7 @@ export class DownloadManager {
           role: job.role,
           category: job.category ?? undefined,
           courseTitle: job.courseTitle ?? undefined,
+          number: job.number ?? null,
           durationSec: job.durationSec,
           quality: job.quality,
           remux: job.remux,

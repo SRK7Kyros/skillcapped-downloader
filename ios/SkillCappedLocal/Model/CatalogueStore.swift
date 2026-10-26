@@ -59,8 +59,9 @@ final class CatalogueStore: ObservableObject {
 
 extension CatalogItem {
   /// What the queue needs to fetch this row. A lesson inside a course inherits
-  /// the course's title so both downloaders write the same folder.
-  func downloadRequest(courseTitle: String? = nil) -> DownloadRequest {
+  /// the course's title so both downloaders write the same folder, and takes the
+  /// number the catalogue gives it so the file name matches the desktop's.
+  func downloadRequest(courseTitle: String? = nil, catalog: CatalogIndex = .empty) -> DownloadRequest {
     DownloadRequest(
       uuid: id,
       title: title,
@@ -68,7 +69,8 @@ extension CatalogItem {
       role: role,
       category: category,
       courseTitle: self.courseTitle ?? courseTitle,
-      durationSec: durationSec
+      durationSec: durationSec,
+      number: catalog.fileNumber(for: id)
     )
   }
 }

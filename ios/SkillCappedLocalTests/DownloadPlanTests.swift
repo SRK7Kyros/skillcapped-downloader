@@ -36,9 +36,33 @@ final class DownloadPlanTests: XCTestCase {
     XCTAssertEqual(DownloadPlan.folder(for: shape(role: "", category: "")), ["Videos", "all", "General"])
   }
 
-  func testFileNameCarriesTheIdAndQuality() {
-    let name = DownloadPlan.fileName(title: "Farming", id: "j413lhtmz7", qualityLabel: "1080p")
-    XCTAssertEqual(name, "Farming [j413lhtmz7] 1080p.mp4")
+  func testFileNameCarriesTheNumberAndQuality() {
+    let name = DownloadPlan.fileName(
+      title: "Farming",
+      number: FileNumber(index: 2, total: 9),
+      qualityLabel: "1080p"
+    )
+    XCTAssertEqual(name, "2 - Farming 1080p.mp4")
+  }
+
+  func testANumberIsPaddedToTheWidthItsCollectionNeeds() {
+    XCTAssertEqual(
+      DownloadPlan.fileName(title: "Farming", number: FileNumber(index: 2, total: 9), qualityLabel: "1080p"),
+      "2 - Farming 1080p.mp4"
+    )
+    XCTAssertEqual(
+      DownloadPlan.fileName(title: "Farming", number: FileNumber(index: 2, total: 12), qualityLabel: "1080p"),
+      "02 - Farming 1080p.mp4"
+    )
+    XCTAssertEqual(
+      DownloadPlan.fileName(title: "Farming", number: FileNumber(index: 7, total: 120), qualityLabel: "1080p"),
+      "007 - Farming 1080p.mp4"
+    )
+  }
+
+  func testALessonInNoCollectionKeepsABareName() {
+    let name = DownloadPlan.fileName(title: "Farming", number: nil, qualityLabel: "1080p")
+    XCTAssertEqual(name, "Farming 1080p.mp4")
   }
 
   func testSanitizeStripsWhatWindowsRefuses() {
@@ -71,10 +95,11 @@ final class DownloadPlanTests: XCTestCase {
   func testLongTitleKeepsTheSuffixIntact() {
     let name = DownloadPlan.fileName(
       title: String(repeating: "a", count: 400),
-      id: "j413lhtmz7",
+      number: FileNumber(index: 3, total: 9),
       qualityLabel: "1080p"
     )
-    XCTAssertTrue(name.hasSuffix(" [j413lhtmz7] 1080p.mp4"))
+    XCTAssertTrue(name.hasPrefix("3 - a"))
+    XCTAssertTrue(name.hasSuffix(" 1080p.mp4"))
     XCTAssertLessThanOrEqual(name.count, 90)
   }
 
@@ -84,10 +109,10 @@ final class DownloadPlanTests: XCTestCase {
     let url = DownloadPlan.destination(
       root: URL(fileURLWithPath: "/lib"),
       shape: shape(courseTitle: "Wave Control"),
-      id: "abc123",
+      number: FileNumber(index: 1, total: 6),
       qualityLabel: "720p"
     )
-    XCTAssertEqual(url.path, "/lib/Courses/adc/Wave Control/Farming [abc123] 720p.mp4")
+    XCTAssertEqual(url.path, "/lib/Courses/adc/Wave Control/1 - Farming 720p.mp4")
   }
 
 

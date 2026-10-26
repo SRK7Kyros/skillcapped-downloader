@@ -53,7 +53,10 @@ enum LibraryScanner {
       guard values?.isRegularFile == true else { continue }
 
       let name = DownloadName.parse(lessonURL.lastPathComponent)
-      let item = name.id.flatMap { catalog.item($0) }
+      let relativeFolder = relative.dropLast().joined(separator: "/")
+      // A numbered name carries no id, so the folder and the title are what
+      // identify the lesson; a name written before numbering still names its id.
+      let item = name.id.flatMap { catalog.item($0) } ?? catalog.locate(folder: relativeFolder, title: name.title)
       let bucket = bucket(for: relative)
       let folderRole = role(of: bucket)
       let catalogTitle = item?.title ?? ""
@@ -68,7 +71,8 @@ enum LibraryScanner {
         seconds: item?.durationSec ?? 0,
         bytes: placeholder == nil ? Int64(values?.fileSize ?? 0) : 0,
         modified: values?.contentModificationDate,
-        itemId: item?.id ?? name.id,
+        itemId: item?.id,
+        number: name.number,
         needsDownload: placeholder != nil || needsDownload(values),
         thumb: item?.thumb ?? ""
       )
@@ -81,7 +85,7 @@ enum LibraryScanner {
         // disagreed about which course owns a lesson — the desktop's own
         // catalog.json and the site can name different courses for one id.
         let key = "folder:\(role)|\(folder.lowercased())"
-        let catalogCourse = name.id
+        let catalogCourse = item?.id
           .flatMap { catalog.courseByLesson[$0] }
           .flatMap { catalog.item($0) }
         if let catalogCourse {
@@ -161,7 +165,10 @@ enum LibraryScanner {
     )
   }
 
+  /// A numbered name states its own position, which is what a viewer expects
+  /// even when the catalogue has since been reordered.
   private static func orderIndex(_ lesson: Lesson, course: CatalogItem?, catalog: CatalogIndex) -> Int {
+    if let number = lesson.number { return number }
     guard let course, let itemId = lesson.itemId else { return Int.max }
     return catalog.order(of: itemId, in: course.id) ?? Int.max
   }

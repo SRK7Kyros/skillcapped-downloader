@@ -23,10 +23,16 @@ Files appear under `content/` beside the executable, so the folder travels with 
 
 ```
 content/
-  Videos/<role>/<category>/<title> [<uuid>] <quality>.mp4
-  Courses/<role>/<course>/<title> [<uuid>] <quality>.mp4
-  Commentaries/<role>/<title> [<uuid>] <quality>.mp4
+  Videos/<role>/<category>/<NN> - <title> <quality>.mp4
+  Courses/<role>/<course>/<NN> - <title> <quality>.mp4
+  Commentaries/<role>/<NN> - <title> <quality>.mp4
 ```
+
+`<NN>` is the lesson's place in its collection, padded to the collection's size
+(`01 - ` in a twelve-lesson course, `1 - ` in a nine-lesson one), so a folder
+sorts in watching order on every platform. Files downloaded before numbering keep
+their old `<title> [<uuid>] <quality>.mp4` name — a library is not migrated, and
+both shapes are read.
 
 ### ffmpeg
 
@@ -107,8 +113,22 @@ run reads as one thing rather than a dozen unrelated downloads.
 Jobs persist across restarts (`content/.skillcapped/jobs.json`); a job that was
 mid-flight when the app closed is marked `interrupted` and can be retried. The
 `skip downloaded` option is on by default and consults the on-disk library.
-Downloaded files are recognised by parsing their own names, so the library stays
-correct even if you move files around inside `content/`.
+
+**A file is named by its place, not its id.** A new download is
+`<NN> - <Title> <quality>.<ext>` — the number being the lesson's position in the
+collection the library groups it into (a course's own `lessonIds` order, or the
+`Videos/<role>/<category>` and `Commentaries/<role>` order — newest first, then
+title, then id, so both surfaces compute the same digits),
+padded to the width of that collection's size. `src/core/numbering.ts` is that one
+rule: a course owns its folder's numbering, so a lesson the course does not list
+takes no number rather than one that would collide with the course's own; and the
+comparator is locale-free (newest first, then title, then id) because the phone
+mirrors it — a `localeCompare` would order two same-day lessons differently on
+iOS. Nothing on disk carries the id any more, so reading the library back is a **catalogue
+lookup**: the folder and the title have to agree, which is why a file moved to
+another folder is still listed (by its own title) but no longer matches a lesson
+for resume/preview purposes. Names written before numbering still carry their
+`[uuid]` and are identified by it wherever they sit.
 
 The catalogue opens on **courses**, and there is no catch-all tab — the content
 switch is Courses / Videos / Smurfs. A course card is a collapsed entry: its
@@ -261,10 +281,13 @@ on the phone itself, into the same folders the desktop build writes.
   is re-encoded, because iOS cannot demux a transport stream and the player reads
   it through the HLS stack instead (see **Playback**). Files land in
   `Courses/<role>/<course>/`, `Videos/<role>/<category>/` and
-  `Commentaries/<role>/` under the desktop's
-  `<title> [<uuid>] <quality>.<ext>` name — `.ts` from the phone, `.mp4` from the
-  desktop — so a phone download and a desktop download of the same course merge
-  instead of duplicating. One lesson runs at a time so the phone stays
+  `Commentaries/<role>/` under the desktop's `<NN> - <title> <quality>.<ext>`
+  name — `.ts` from the phone, `.mp4` from the desktop — so a phone download and
+  a desktop download of the same course merge instead of duplicating. The number
+  is the lesson's place in its collection, taken from the catalogue through
+  `CatalogIndex.fileNumber` (which mirrors `src/core/numbering.ts`), and it rides
+  on the queue row so a catalogue refresh mid-download cannot rename a lesson that
+  is already half-fetched. One lesson runs at a time so the phone stays
   responsive, and the queue is persisted: a relaunch resumes it.
 - **It keeps going while the app is shut.** The parts are fetched by a
   background `URLSession` (`Support/BackgroundTransfer.swift`), so the system
@@ -429,11 +452,15 @@ on the phone itself, into the same folders the desktop build writes.
   once it lands. `LibraryMigrationTests` pins the carry, the merge, the refusal to
   overwrite, the untouched non-library folders, the cloud shadow, the
   never-into-itself rule and the progress readout.
-- **What it reads.** `<title> [<uuid>] <quality>.<ext>` under
+- **What it reads.** `<NN> - <title> <quality>.<ext>` under
   `Courses/<role>/<course>/`, `Videos/<role>/<category>/` and
   `Commentaries/<role>/`, exactly as `src/core/naming.ts` writes them, joined to
   `.skillcapped/catalog.json` for titles, durations and the order a course lists
-  its lessons in. **A course is its folder**, and the catalogue only describes it:
+  its lessons in. A numbered name carries no id, so `CatalogIndex.locate` turns the
+  folder and the title back into a lesson — the title a name was truncated to is
+  matched as a prefix, and the file's own number (not the catalogue's) decides its
+  position in the course. A name written before numbering still carries
+  `[<uuid>]` and is identified by it, so nothing on disk had to be migrated. **A course is its folder**, and the catalogue only describes it:
   a folder is named by a catalogue course only while exactly one course claims its
   lessons. Keying identity on a catalogue id instead split one folder into two
   cards with the same title whenever the desktop's file and the site disagreed
@@ -445,9 +472,9 @@ on the phone itself, into the same folders the desktop build writes.
   `LibraryScannerTests`. Both containers are playable — an `.mp4` from the desktop and a
   `.ts` from this app (and a `.ts` copied in by hand). Without that catalogue file
   the folders still group a course, and a video copied in by hand keeps its own
-  name — its id comes from the uuid in the filename, so a lesson scanned before
-  the catalogue loaded still remembers where you stopped and still matches a
-  download made on this phone.
+  name and takes no number; a legacy `[<uuid>]` name still identifies itself, so a
+  lesson scanned before the catalogue loaded remembers where you stopped and still
+  matches a download made on this phone.
 - **Cover art.** A frame pulled out of each lesson (`AVAssetImageGenerator`), a
   little way in, cached under `Caches/posters`. An `.mp4` from the desktop yields
   one; a downloaded `.ts` does not, and that is a platform restriction rather

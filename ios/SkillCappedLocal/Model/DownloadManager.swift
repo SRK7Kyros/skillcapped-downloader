@@ -36,6 +36,9 @@ struct DownloadTask: Codable, Identifiable, Hashable {
   var category: String
   var courseTitle: String?
   var durationSec: Int
+  /// Kept on the row so the name stays the one it was queued under even if the
+  /// catalogue is refreshed mid-download.
+  var number: FileNumber?
   var quality: String?
   var actualQuality: String?
   var state: DownloadState
@@ -57,7 +60,8 @@ struct DownloadTask: Codable, Identifiable, Hashable {
       role: role,
       category: category,
       courseTitle: courseTitle,
-      durationSec: durationSec
+      durationSec: durationSec,
+      number: number
     )
   }
 
@@ -235,6 +239,7 @@ final class DownloadManager: ObservableObject {
           category: request.category,
           courseTitle: request.courseTitle,
           durationSec: request.durationSec,
+          number: request.number,
           quality: quality,
           actualQuality: nil,
           state: .queued,

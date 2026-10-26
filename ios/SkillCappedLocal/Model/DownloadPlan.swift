@@ -9,14 +9,27 @@ struct DownloadShape: Hashable {
   let courseTitle: String?
 }
 
+/// Where a lesson sits in its collection, and how large that collection is —
+/// a course's own lesson order, or the catalogue order within one videos /
+/// commentaries folder. `CatalogIndex.fileNumber` is what works it out.
+struct FileNumber: Codable, Hashable, Sendable {
+  let index: Int
+  let total: Int
+}
+
 /// Where a download lands and what it is called.
 ///
 /// The layout is the one the desktop downloader writes, so a phone download and
 /// a desktop download of the same course merge into one course instead of two:
 ///
-///     Videos/<Role>/<Category>/<Title> [uuid] <label>.<ext>
-///     Courses/<Role>/<Course>/<Title> [uuid] <label>.<ext>
-///     Commentaries/<Role>/<Title> [uuid] <label>.<ext>
+///     Videos/<Role>/<Category>/<NN> - <Title> <label>.<ext>
+///     Courses/<Role>/<Course>/<NN> - <Title> <label>.<ext>
+///     Commentaries/<Role>/<NN> - <Title> <label>.<ext>
+///
+/// Nothing else identifies a file on disk — `CatalogIndex.locate` says which
+/// lesson a name is. A name written before the number existed keeps its
+/// `<Title> [<uuid>] <label>` shape and is still read, because a library is not
+/// migrated.
 ///
 /// The phone writes `.ts` (the transport stream the CDN served, which is what iOS
 /// can play); the desktop writes `.mp4`.
@@ -68,25 +81,35 @@ enum DownloadPlan {
     }
   }
 
-  /// `Title [uuid] 1080p.mp4` — the uuid and label are what make dedupe and a
-  /// later rescan possible.
-  static func fileName(title: String, id: String, qualityLabel: String, extension ext: String = "mp4", maxLength: Int = maxSegmentLength) -> String {
-    let suffix = " [\(id)] \(qualityLabel).\(ext)"
-    let room = max(12, maxLength - suffix.count)
-    return sanitize(title, maxLength: room) + suffix
+  /// `01 - ` — the index padded to the width the collection's size needs, so a
+  /// nine-lesson course reads `1 - ` while a twelve-lesson one reads `01 - ` and
+  /// both sort in watching order. Mirrors `numberPrefix` in the desktop build.
+  static func numberPrefix(_ number: FileNumber?) -> String {
+    guard let number else { return "" }
+    let width = max(1, String(max(1, number.total)).count)
+    let digits = String(number.index)
+    return String(repeating: "0", count: max(0, width - digits.count)) + digits + " - "
+  }
+
+  /// `<NN> - <Title> 1080p.mp4` — no number when the lesson is in no collection.
+  static func fileName(title: String, number: FileNumber?, qualityLabel: String, extension ext: String = "mp4", maxLength: Int = maxSegmentLength) -> String {
+    let prefix = numberPrefix(number)
+    let suffix = " \(qualityLabel).\(ext)"
+    let room = max(12, maxLength - prefix.count - suffix.count)
+    return prefix + sanitize(title, maxLength: room) + suffix
   }
 
   /// Absolute destination, honouring the same path budget the desktop uses.
-  static func destination(root: URL, shape: DownloadShape, id: String, qualityLabel: String, extension ext: String = "mp4") -> URL {
+  static func destination(root: URL, shape: DownloadShape, number: FileNumber?, qualityLabel: String, extension ext: String = "mp4") -> URL {
     let components = folder(for: shape)
-    let suffixLength = " [\(id)] \(qualityLabel).\(ext)".count
+    let suffixLength = numberPrefix(number).count + " \(qualityLabel).\(ext)".count
     let folderLength = components.reduce(0) { $0 + $1.count + 1 }
     let room = maxPath - root.path.count - folderLength - suffixLength
     let nameBudget = max(12, min(maxSegmentLength, room))
     var url = root
     for component in components { url.appendPathComponent(component, isDirectory: true) }
     return url.appendingPathComponent(
-      fileName(title: shape.title, id: id, qualityLabel: qualityLabel, extension: ext, maxLength: nameBudget),
+      fileName(title: shape.title, number: number, qualityLabel: qualityLabel, extension: ext, maxLength: nameBudget),
       isDirectory: false
     )
   }

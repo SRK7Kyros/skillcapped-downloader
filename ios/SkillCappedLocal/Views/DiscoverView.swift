@@ -231,7 +231,7 @@ struct DiscoverView: View {
       return
     }
     guard !downloads.isReady(item.id) else { return }
-    downloads.enqueue([item.downloadRequest(courseTitle: nil)], quality: nil)
+    downloads.enqueue([item.downloadRequest(courseTitle: nil, catalog: store.catalog)], quality: nil)
   }
 
   private func localLesson(for id: String) -> Lesson? {

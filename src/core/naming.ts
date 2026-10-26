@@ -2,6 +2,17 @@
  * Where a download lands, and what it is called. All filesystem naming rules
  * (including the Windows-specific ones, since the Windows exe is a build
  * target) are applied here so nothing else has to think about them.
+ *
+ * A new download is named `<NN> - <Title> <quality>.<ext>`, the number being its
+ * position in the collection it belongs to (a course's own lesson order, or the
+ * catalogue order within a videos/commentaries folder) padded to the width of
+ * that collection's size — `01 - ` in a ten-lesson course, `1 - ` in a
+ * five-lesson one. Nothing else identifies a file on disk: the catalogue is
+ * what says which lesson a name is (see `locateItems` in `library.ts`).
+ *
+ * Files written before the number existed keep their `Title [uuid] 1080p.mp4`
+ * name and are still read by `parseFileName`, because a library is not
+ * migrated — both shapes coexist.
  */
 
 import path from "node:path"
@@ -42,11 +53,24 @@ export type DownloadShape = {
   courseTitle?: string
 }
 
+/** Where a lesson sits in its collection, and how large that collection is. */
+export type FileNumber = { index: number; total: number }
+
+/**
+ * `01 - ` — the index padded to the number of digits the collection's size
+ * needs, so `9 of 9` reads `9 - ` while `9 of 12` reads `09 - ` and the names
+ * sort in watching order on every platform.
+ */
+export function numberPrefix(number: FileNumber): string {
+  const width = Math.max(1, String(Math.max(1, number.total)).length)
+  return `${String(number.index).padStart(width, "0")} - `
+}
+
 /**
  * Library layout, relative to the content root:
- *   Videos/<Role>/<Category>/<Title> [uuid] <label>.mp4
- *   Courses/<Role>/<Course>/<Title> [uuid] <label>.mp4
- *   Commentaries/<Role>/<Title> [uuid] <label>.mp4
+ *   Videos/<Role>/<Category>/<NN> - <Title> <label>.mp4
+ *   Courses/<Role>/<Course>/<NN> - <Title> <label>.mp4
+ *   Commentaries/<Role>/<NN> - <Title> <label>.mp4
  * Grouping by role then course/category is what makes a bulk download usable
  * afterwards.
  */
@@ -58,37 +82,71 @@ export function relativeFolder(shape: DownloadShape): string {
   return path.join("Videos", role, sanitizeSegment(shape.category || "General"))
 }
 
-/** `Title [uuid] 1080p.mp4` — the uuid + label is what makes dedupe possible. */
-export function buildFileName(title: string, id: string, quality: number, extension: string, maxLength = MAX_SEGMENT): string {
-  const suffix = ` [${id}] ${qualityLabel(quality)}.${extension}`
-  const room = Math.max(12, maxLength - suffix.length)
-  const base = sanitizeSegment(title, room)
-  return `${base}${suffix}`
+/** `<NN> - <Title> 1080p.mp4`; no number when the lesson is in no collection. */
+export function buildFileName(
+  title: string,
+  number: FileNumber | null,
+  quality: number,
+  extension: string,
+  maxLength = MAX_SEGMENT,
+): string {
+  const prefix = number ? numberPrefix(number) : ""
+  const suffix = ` ${qualityLabel(quality)}.${extension}`
+  const room = Math.max(12, maxLength - prefix.length - suffix.length)
+  return `${prefix}${sanitizeSegment(title, room)}${suffix}`
 }
 
 /** Absolute destination for a finished file, honouring the path budget. */
 export function destinationPath(
   root: string,
-  shape: DownloadShape & { id: string },
+  shape: DownloadShape & { number?: FileNumber | null },
   quality: number,
   extension: string,
 ): string {
   const folder = relativeFolder(shape)
-  const suffixLength = ` [${shape.id}] ${qualityLabel(quality)}.${extension}`.length
+  const prefix = shape.number ? numberPrefix(shape.number) : ""
+  const suffixLength = prefix.length + ` ${qualityLabel(quality)}.${extension}`.length
   const room = MAX_PATH - root.length - folder.length - 1 - suffixLength
   const nameBudget = Math.max(12, Math.min(MAX_SEGMENT, room))
-  return path.join(root, folder, buildFileName(shape.title, shape.id, quality, extension, nameBudget))
+  return path.join(root, folder, buildFileName(shape.title, shape.number ?? null, quality, extension, nameBudget))
 }
 
-/** Filename pattern the library scanner recognises. */
-export const FILE_PATTERN = /^(.*?)\s*\[([a-z0-9]{6,12})\]\s*(\d{3,4}p)\.(mp4|ts)$/i
+/** `Title [uuid] 1080p.mp4` — what every file written before numbering is called. */
+export const LEGACY_FILE_PATTERN = /^(.*?)\s*\[([a-z0-9]{6,12})\]\s*(\d{3,4}p)\.(mp4|ts)$/i
 
-export type ParsedFileName = { title: string; uuid: string; qualityLabel: string; extension: string }
+/**
+ * `01 - Title 1080p.mp4` — what a download is called now. The title is greedy
+ * so a lesson whose own title mentions a rendition (`1440p settings`) keeps it
+ * and the last quality token is the one that names the file.
+ */
+export const NUMBERED_FILE_PATTERN = /^(\d+)\s*-\s*(.*)\s+(\d{3,4}p)\.(mp4|ts)$/i
+
+export type ParsedFileName = {
+  title: string
+  /** Present only on a pre-numbering name. */
+  uuid: string | null
+  /** Present only on a numbered name. */
+  number: number | null
+  qualityLabel: string
+  extension: string
+}
 
 export function parseFileName(name: string): ParsedFileName | null {
-  const match = FILE_PATTERN.exec(name)
-  if (!match) return null
-  return { title: match[1], uuid: match[2], qualityLabel: match[3], extension: match[4] }
+  // Legacy first: a title that begins with digits ("3 - Wave Control") would
+  // otherwise be read as a number and lose the uuid that identifies it.
+  const legacy = LEGACY_FILE_PATTERN.exec(name)
+  if (legacy) {
+    return { title: legacy[1], uuid: legacy[2], number: null, qualityLabel: legacy[3], extension: legacy[4] }
+  }
+  const numbered = NUMBERED_FILE_PATTERN.exec(name)
+  if (numbered) {
+    return {
+      title: numbered[2].trim(),
+      uuid: null,
+      number: Number(numbered[1]),
+      qualityLabel: numbered[3],
+      extension: numbered[4],
+    }
+  }
+  return null
 }
-
-

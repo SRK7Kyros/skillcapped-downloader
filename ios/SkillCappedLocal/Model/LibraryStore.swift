@@ -26,6 +26,15 @@ final class LibraryStore: ObservableObject {
   /// and no posters.
   private var catalogue = CatalogIndex.empty
 
+  /// The catalogue as the folder actually reads it — the desktop's own
+  /// `.skillcapped/catalog.json` merged under the fetched one. It is the index
+  /// that decides a library file's lesson and the number a new download is named
+  /// with, so a phone with no network still numbers a library the desktop wrote.
+  private var resolved = CatalogIndex.empty
+
+  /// The catalogue the app has fetched, as the surfaces use it.
+  var catalog: CatalogIndex { resolved.isEmpty ? catalogue : resolved }
+
   /// The folder is remembered under `LibraryRoot`'s keys, so the queue can answer
   /// the same question with no store and no scene.
   private let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
@@ -281,15 +290,16 @@ final class LibraryStore: ObservableObject {
       let result = await Task.detached(priority: .userInitiated) {
         let local = CatalogIndex.load(root: root) ?? .empty
         let catalog = CatalogIndex.merged(primary: local, secondary: external)
-        return LibraryScanner.scan(root: root, catalog: catalog)
+        return (catalog, LibraryScanner.scan(root: root, catalog: catalog))
       }.value
       // A scan of a folder the app has since left must not answer for the new
       // one: picking a folder while the app's own is still being read used to
       // leave the empty own folder's result showing.
       guard isSamePath(root, libraryURL) else { return }
-      scan = result
+      resolved = result.0
+      scan = result.1
       scanning = false
-      if result.isEmpty, moving == nil {
+      if scan?.isEmpty == true, moving == nil {
         message = usingOwnFolder
           ? "Nothing here yet. A lesson fetched in Discover lands in this folder, and one copied into it from Files is read in place."
           : "No lessons found. Point the app at the folder that holds Courses, Videos and Commentaries."
