@@ -12,6 +12,9 @@ struct QueueSummary: Equatable {
   let currentTitle: String
   let currentCourse: String?
   let paused: Bool
+  /// Filled from the queue's own estimate, which is only known once a part has
+  /// landed; `nil` before that.
+  var timeLeft: String? = nil
 
   var percent: Double {
     guard segmentsTotal > 0 else { return 0 }
@@ -26,7 +29,8 @@ struct QueueSummary: Equatable {
       bytesDone: bytesDone,
       currentTitle: currentTitle,
       currentCourse: currentCourse,
-      paused: paused
+      paused: paused,
+      timeLeft: timeLeft
     )
   }
 

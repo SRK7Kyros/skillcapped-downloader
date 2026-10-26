@@ -147,13 +147,16 @@ struct ContinuedRun {
   }
 }
 
-/// The system's own answer to "a queue outlives the foreground".
+/// The system's answer to "a queue outlives the foreground".
 ///
 /// iOS 26 keeps this process running for the length of a continued-processing
-/// task and draws its own card saying so, which is exactly the two things the
-/// download queue had been rebuilding by hand: an assertion that keeps the app
-/// awake, and a progress card that is the system's rather than ours. Below iOS 26
-/// there is nothing here and the queue falls back to `BackgroundHold`, unchanged.
+/// task — the assertion the download queue had been renewing by hand, with a
+/// system card beside it. The card this app draws itself is the one that carries
+/// the queue (the system's is one headline and one subtitle), so the task's own
+/// card is welcome alongside ours rather than a replacement; what the task is
+/// relied on for is the running process, without which neither card's numbers
+/// move. Below iOS 26 there is nothing here and the queue falls back to
+/// `BackgroundHold`, unchanged.
 ///
 /// One task for the one queue: a second request would be a second task for the same
 /// work, so a request that has been submitted is never submitted again.
@@ -185,11 +188,11 @@ final class ContinuedProcessing {
   private var submittedAt: Date?
 
   /// iOS took the task away: the person cancelled it on its card, or the system
-  /// needed the time for something else. Both mean stop — carrying on would
-  /// download behind a card that is no longer there.
+  /// needed the time for something else. Both are reported so the queue can fall
+  /// back to the background assertion it uses on iOS 17–25.
   var onExpire: (@MainActor () -> Void)?
-  /// Asked whenever the task starts or ends, because the app draws its own
-  /// lock-screen card only while the system is not drawing one.
+  /// Asked whenever the task starts or ends, so the queue can refresh the app's own
+  /// lock-screen card at the moment its situation changed.
   var onStateChange: (@MainActor () -> Void)?
 
   /// Whether the system is keeping this app running for the queue *right now*.
@@ -312,7 +315,7 @@ final class ContinuedProcessing {
     latest = nil
     reportedAt = nil
     reportedTitle = ""
-    BackgroundJournal.shared.record("continued: taken away — the queue is paused")
+    BackgroundJournal.shared.record("continued: taken away — the queue falls back to the assertion")
     onExpire?()
     onStateChange?()
   }

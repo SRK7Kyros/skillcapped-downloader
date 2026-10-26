@@ -178,8 +178,7 @@ final class DownloadManager: ObservableObject {
 
     // The two questions iOS 26 asks of this queue. Both arrive on the main actor:
     // one when its continued-processing task is taken away, one when that task
-    // starts or ends, which is the moment the app's own card steps aside or takes
-    // over again.
+    // starts or ends and the lock-screen card has to be refreshed either way.
     ContinuedProcessing.shared.onExpire = { [weak self] in
       self?.continuedWasTakenAway()
     }
@@ -518,18 +517,18 @@ final class DownloadManager: ObservableObject {
   /// The lock screen follows the queue, not the other way round: it is redrawn
   /// from the tasks whenever they change, and ends when nothing is left.
   ///
-  /// A continued-processing task draws a card of the system's own for this queue,
-  /// so ours steps aside while it runs — two cards for one download is worse than
-  /// either.
+  /// `refreshContinued` runs first: it is what works out the estimate the card
+  /// shows, and it is also what asks iOS for the continued-processing task (or
+  /// withdraws it once the queue drains).
   private func refreshActivity() {
-    activity.setSuppressed(ContinuedProcessing.shared.isCovering)
-    if let summary = QueueSummary.of(tasks) {
+    refreshContinued()
+    if var summary = QueueSummary.of(tasks) {
+      summary.timeLeft = summary.paused ? nil : continuedRun.timeLeftPhrase
       activity.show(summary)
     } else {
       activity.finish()
     }
     activityTrouble = activity.trouble
-    refreshContinued()
   }
 
   /// The system's own card (iOS 26), kept in step with what the queue is actually
@@ -548,22 +547,16 @@ final class DownloadManager: ObservableObject {
 
   /// iOS took the queue's continued-processing task away: the person cancelled it
   /// on its card, or the system needed the time for something else, and the two
-  /// cannot be told apart. Both are read as stop — downloading behind a card that
-  /// is no longer there spends data nobody asked for — and the rows are paused
-  /// rather than failed, so one tap picks the queue up where it stopped.
+  /// cannot be told apart. Neither stops the queue any more, because the app's own
+  /// card is what reports it and the transfers belong to a background session: the
+  /// work carries on under the background assertion that was in charge before
+  /// iOS 26 — a window of parts per wake instead of a running process, which is
+  /// slow, not stalled. The task is asked for again next time this app is
+  /// foregrounded.
   private func continuedWasTakenAway() {
-    for index in tasks.indices {
-      let state = tasks[index].state
-      guard state == .queued || state == .downloading || state == .remuxing else { continue }
-      tasks[index].state = .paused
+    if TransferHandover.needsApp(running: running != nil, states: tasks.map(\.state)) {
+      holdAwake()
     }
-    if let uuid = running { BackgroundTransfer.shared.cancelLesson(uuid) }
-    runner?.cancel()
-    runner = nil
-    running = nil
-    bytesPerSecond = 0
-    releaseLeases()
-    persist()
     refreshActivity()
   }
 

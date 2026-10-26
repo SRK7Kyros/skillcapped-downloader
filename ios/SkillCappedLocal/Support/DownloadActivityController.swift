@@ -54,11 +54,6 @@ final class DownloadActivityController {
   /// `nil` while it is there.
   private(set) var trouble: String?
 
-  /// The system is drawing a card of its own for this queue — an iOS 26
-  /// continued-processing task does exactly that — so this one must not. Set from
-  /// the queue's own state, never from a view.
-  private var suppressed = false
-
   init() {
     _ = NotificationCenter.default.addObserver(
       forName: UIApplication.didBecomeActiveNotification,
@@ -71,18 +66,12 @@ final class DownloadActivityController {
 
   var isAvailable: Bool { ActivityAuthorizationInfo().areActivitiesEnabled }
 
-  /// Hand the lock screen over to the system, or take it back. Called on every
-  /// refresh, so it acts only on a change: ending the card is what stops ours from
-  /// sitting beside the system's, and it happens once.
-  func setSuppressed(_ value: Bool) {
-    guard value != suppressed else { return }
-    suppressed = value
-    if value { finish() }
-  }
-
+  /// The app's own card is the one that carries the queue, from the first lesson
+  /// queued to the last one landed. It used to step aside while an iOS 26
+  /// continued-processing task ran, but that card is one truncated headline and
+  /// subtitle; the task now only keeps this process running, so this card's
+  /// numbers keep moving.
   func show(_ summary: QueueSummary) {
-    // Nothing is asked of ActivityKit while the system's own card has the queue.
-    guard !suppressed else { return }
     lastSummary = summary
     guard isAvailable else {
       trouble = "Live Activities are off for SkillCapped Local — turn on Settings › SkillCapped Local › Live Activities."

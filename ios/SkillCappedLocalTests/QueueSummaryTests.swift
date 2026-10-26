@@ -119,4 +119,18 @@ final class QueueSummaryTests: XCTestCase {
     XCTAssertEqual(state?.currentCourse, "Macro")
     XCTAssertEqual(state?.percent ?? 0, 0.25, accuracy: 0.0001)
   }
+
+  func testTheEstimateTravelsToTheCard() {
+    var summary = QueueSummary.of([task("a", state: .downloading, done: 1, total: 4)])
+    summary?.timeLeft = "~4 min left"
+
+    XCTAssertEqual(summary?.state.timeLeft, "~4 min left")
+  }
+
+  func testACardWithoutAnEstimateDrawsNone() {
+    let summary = QueueSummary.of([task("a", state: .downloading, done: 1, total: 4)])
+
+    XCTAssertNil(summary?.timeLeft)
+    XCTAssertNil(summary?.state.timeLeft)
+  }
 }

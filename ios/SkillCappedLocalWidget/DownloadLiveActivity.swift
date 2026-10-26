@@ -41,7 +41,7 @@ struct DownloadLiveActivity: Widget {
           VStack(alignment: .leading, spacing: 4) {
             ProgressView(value: context.state.percent)
               .tint(Brand.brand)
-            Text(Brand.detail(context.state))
+            Text(Brand.detailLine(context.state))
               .font(.caption2)
               .foregroundStyle(.secondary)
               .lineLimit(1)
@@ -84,12 +84,12 @@ private struct LockScreenCard: View {
         Text(state.currentTitle)
           .font(.subheadline.weight(.semibold))
           .foregroundStyle(Color.white)
-          .lineLimit(1)
-        if let course = state.currentCourse, !course.isEmpty {
-          Text(course)
+          .lineLimit(2)
+        if let footnote = Brand.footnote(state) {
+          Text(footnote)
             .font(.caption2)
             .foregroundStyle(.secondary)
-            .lineLimit(1)
+            .lineLimit(2)
         }
         ProgressView(value: state.percent)
           .tint(Brand.brand)
@@ -120,5 +120,18 @@ private enum Brand {
     if state.paused { return "Paused" }
     let left = state.lessonsLeft == 1 ? "1 lesson left" : "\(state.lessonsLeft) lessons left"
     return state.bytesDone > 0 ? "\(left) · \(bytes(state.bytesDone))" : left
+  }
+
+  static func detailLine(_ state: DownloadActivityAttributes.ContentState) -> String {
+    guard !state.paused, let eta = state.timeLeft, !eta.isEmpty else { return detail(state) }
+    return "\(detail(state)) · \(eta)"
+  }
+
+  /// The course and the time left, whichever are known; `nil` draws no line.
+  static func footnote(_ state: DownloadActivityAttributes.ContentState) -> String? {
+    let parts = [state.currentCourse, state.timeLeft]
+      .compactMap { $0?.trimmingCharacters(in: .whitespaces) }
+      .filter { !$0.isEmpty }
+    return parts.isEmpty ? nil : parts.joined(separator: " · ")
   }
 }

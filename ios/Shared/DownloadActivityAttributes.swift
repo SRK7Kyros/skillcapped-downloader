@@ -18,6 +18,9 @@ struct DownloadActivityAttributes: ActivityAttributes {
     var currentTitle: String
     var currentCourse: String?
     var paused: Bool
+    /// `~3 min left` while an estimate is known, `nil` until the queue has
+    /// measured a speed.
+    var timeLeft: String? = nil
 
     /// The queue's bar: parts landed over parts known. A lesson whose part count
     /// has not been read yet contributes nothing, which is why the bar can jump

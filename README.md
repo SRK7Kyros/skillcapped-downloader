@@ -305,39 +305,49 @@ on the phone itself, into the same folders the desktop build writes.
   *refused* grant is retried once every ten seconds, never once per part — parts
   settle about eleven times a second while the app is awake, and one journal line
   per refusal would bury the reason it is there to explain.
-- **On iOS 26 the system runs the queue, and says so on its own card.** Below 26
-  the whole job above is a background assertion this app takes and renews by hand,
-  which is a budget the system meters. iOS 26 offers the thing the queue was
-  imitating: a continued-processing task (`Support/ContinuedProcessing.swift`,
-  identifier `com.kyros.skillcappedlocal.download`, declared in
+- **On iOS 26 the system runs the queue, and the app's own card says what it is
+  doing.** Below 26 the whole job above is a background assertion this app takes and
+  renews by hand, which is a budget the system meters. iOS 26 offers the thing the
+  queue was imitating: a continued-processing task
+  (`Support/ContinuedProcessing.swift`, identifier
+  `com.kyros.skillcappedlocal.download`, declared in
   `BGTaskSchedulerPermittedIdentifiers`) keeps the app running for as long as the
-  queue still has work and draws a card with the lesson in front, how many are
-  left and a progress bar. So the assertion is skipped while that task is running
-  — it would spend background budget to duplicate it — and the app's own Live
-  Activity steps aside (`DownloadActivityController.setSuppressed`) because two
-  cards for one download is worse than either. The bar's arithmetic is the
+  queue still has work. So the assertion is skipped while that task is running — it
+  would spend background budget to duplicate it. **The Live Activity is this app's
+  own, and it runs from the first lesson queued to the last one landed** (1.29.0):
+  the system's continued-processing card is one headline and one subtitle, both
+  truncated, which made the lock screen say very little, so it no longer stands in
+  for ours. Both can be on the lock screen while that task runs; ours is the one
+  that carries the lesson, the course, the queue and the estimate, and the task is
+  only what keeps this process running so those numbers keep moving. **A task taken
+  away — cancelled on its card, or reclaimed by the system, which cannot be told
+  apart — no longer pauses the queue** (1.29.0; from 1.28.0 it did): the transfers
+  belong to a background session and the app's card is still on the screen, so the
+  queue falls back to the assertion it uses on iOS 17–25 — a window of parts per
+  wake instead of a running process, which is slow rather than stalled — and the
+  task is asked for again the next time the app is foregrounded. The bar's
+  arithmetic is the
   careful part and is pure, in `ContinuedRun`: a lesson's part count is only known
   once its manifest has been read, which happens after it starts, so until then its
   share is planned from its length at the catalogue's own rate (~9 s of footage a
   part) and **fixed the first time the lesson is seen** — a denominator that grows
   when a lesson starts reads as the bar going backwards. A lesson that lands counts
   its whole plan, so finishing one advances the bar; a lesson cancelled or failed
-  leaves the plan with it rather than leaving the bar short for ever. A task taken
-  away — cancelled on its card, or reclaimed by the system, which cannot be told
-  apart — pauses the queue rather than failing it, so one tap resumes. **The
-  card's two lines are the queue's own answer, not a constant**, because the card
-  is drawn by the system and this is the only way to say anything on it: the
-  headline names the lesson coming down now, and the line under it carries what is
-  left of the queue, how long that should take and the course those lessons belong
-  to — in that order, since a long course name is the one thing that can be cut
-  off without losing the answer. The estimate is the parts still to fetch at the
-  size the lesson in front is showing and the speed the queue is already smoothing
-  for its own readout, so it moves with the network instead of guessing; it is
-  withheld until a part has landed, because a card that invents a number is worse
-  than one that waits a few seconds. It is handed over at most once a second and
-  at once when the lesson in front changes, and a *refused* request is retried
-  once every ten seconds — parts settle about eleven times a second, so retrying
-  per part would write a journal line per part and bury the reason.
+  leaves the plan with it rather than leaving the bar short for ever. The system's
+  card is still fed the same numbers, because it is drawn by iOS and those two lines
+  are the only way to say anything on it: the headline names the lesson coming down
+  now, and the line under it carries what is left of the queue, how long that should
+  take and the course those lessons belong to — in that order, since a long course
+  name is the one thing that can be cut off without losing the answer. The estimate
+  is the parts still to fetch at the size the lesson in front is showing and the
+  speed the queue is already smoothing for its own readout, so it moves with the
+  network instead of guessing; it is withheld until a part has landed, because a
+  card that invents a number is worse than one that waits a few seconds — and the
+  app's own card prints the same phrase beside the course (`timeLeft` in
+  `DownloadActivityAttributes.ContentState`). It is handed over at most once a
+  second and at once when the lesson in front changes, and a *refused* request is
+  retried once every ten seconds — parts settle about eleven times a second, so
+  retrying per part would write a journal line per part and bury the reason.
 - **A part the system never hands back cannot stop the queue.** Every part a
   lesson awaits lives inside the one task `pump` runs, and `pump` refuses to start
   anything while that task is alive, so a wait that never returns was the whole
