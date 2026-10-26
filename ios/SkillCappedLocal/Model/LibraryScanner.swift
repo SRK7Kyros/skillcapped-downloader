@@ -85,8 +85,11 @@ enum LibraryScanner {
         // disagreed about which course owns a lesson — the desktop's own
         // catalog.json and the site can name different courses for one id.
         let key = "folder:\(role)|\(folder.lowercased())"
-        let catalogCourse = item?.id
-          .flatMap { catalog.courseByLesson[$0] }
+        // Flat-mapped off `item` itself, not `item?.id`: everything after a `?.`
+        // is still inside the optional chain, where `flatMap` would bind to
+        // `String` — a sequence of characters — instead of to the optional.
+        let catalogCourse = item
+          .flatMap { catalog.courseByLesson[$0.id] }
           .flatMap { catalog.item($0) }
         if let catalogCourse {
           courseClaims[key, default: []].insert(catalogCourse.id)
