@@ -153,6 +153,10 @@ final class DownloadManager: ObservableObject {
   /// grant lasts takes the next one at the next part that settles. `renew` asks the
   /// lease whether the system is still honouring it, never whether one exists.
   private let lessonHold = BackgroundHold()
+  /// The queue as iOS is told about it while the app is away: the numbers behind
+  /// the system's own card, and the total a lesson that has not started is planned
+  /// against. Kept across pumps so the bar only ever moves forwards.
+  private var continuedRun = ContinuedRun()
 
   init(root: URL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]) {
     self.root = root
@@ -171,6 +175,17 @@ final class DownloadManager: ObservableObject {
       }
     }
     pruneMissing()
+
+    // The two questions iOS 26 asks of this queue. Both arrive on the main actor:
+    // one when its continued-processing task is taken away, one when that task
+    // starts or ends, which is the moment the app's own card steps aside or takes
+    // over again.
+    ContinuedProcessing.shared.onExpire = { [weak self] in
+      self?.continuedWasTakenAway()
+    }
+    ContinuedProcessing.shared.onStateChange = { [weak self] in
+      self?.refreshActivity()
+    }
   }
 
   // MARK: - Lookups
@@ -372,10 +387,17 @@ final class DownloadManager: ObservableObject {
     }
     // Whatever called this — a fresh start, a wake that found a lesson already in
     // flight, or the user leaving the app — the refill loop runs in this process,
-    // so the assertion is taken here and held until the lesson ends (`apply`
-    // renews it, `finish`/`interrupt` release it).
+    // so the app has to stay awake while there is work to do. On iOS 26 that is
+    // asked of the system: the queue becomes a continued-processing task, which
+    // keeps the app running and puts its progress on a card of the system's own.
+    // Everywhere else, and until that task actually starts, it is the background
+    // assertion `holdAwake` takes.
     if TransferHandover.needsApp(running: runner != nil, states: tasks.map(\.state)) {
+      continuedRun.observe(tasks)
+      ContinuedProcessing.shared.keepAlive(continuedRun)
       holdAwake()
+    } else {
+      ContinuedProcessing.shared.finish()
     }
     guard runner == nil else { return }
     guard let next = tasks
@@ -479,7 +501,12 @@ final class DownloadManager: ObservableObject {
 
   /// Keep this process running while a lesson is in flight, or take a fresh grant
   /// when the previous one has expired and the app is awake again.
+  ///
+  /// Skipped while the system is already keeping the app here: every
+  /// `beginBackgroundTask` spends the app's background budget, and a continued
+  /// processing task has taken over that job entirely.
   private func holdAwake() {
+    guard !ContinuedProcessing.shared.isCovering else { return }
     lessonHold.renew("lesson")
   }
 
@@ -491,13 +518,39 @@ final class DownloadManager: ObservableObject {
 
   /// The lock screen follows the queue, not the other way round: it is redrawn
   /// from the tasks whenever they change, and ends when nothing is left.
+  ///
+  /// A continued-processing task draws a card of the system's own for this queue,
+  /// so ours steps aside while it runs — two cards for one download is worse than
+  /// either.
   private func refreshActivity() {
+    activity.setSuppressed(ContinuedProcessing.shared.isCovering)
     if let summary = QueueSummary.of(tasks) {
       activity.show(summary)
     } else {
       activity.finish()
     }
     activityTrouble = activity.trouble
+  }
+
+  /// iOS took the queue's continued-processing task away: the person cancelled it
+  /// on its card, or the system needed the time for something else, and the two
+  /// cannot be told apart. Both are read as stop — downloading behind a card that
+  /// is no longer there spends data nobody asked for — and the rows are paused
+  /// rather than failed, so one tap picks the queue up where it stopped.
+  private func continuedWasTakenAway() {
+    for index in tasks.indices {
+      let state = tasks[index].state
+      guard state == .queued || state == .downloading || state == .remuxing else { continue }
+      tasks[index].state = .paused
+    }
+    if let uuid = running { BackgroundTransfer.shared.cancelLesson(uuid) }
+    runner?.cancel()
+    runner = nil
+    running = nil
+    bytesPerSecond = 0
+    releaseLeases()
+    persist()
+    refreshActivity()
   }
 
   /// The Settings readout's button: ask for a card right now, with the queue's own
@@ -524,6 +577,9 @@ final class DownloadManager: ObservableObject {
       BackgroundJournal.shared.record("batch idle: nothing left to continue")
       return
     }
+    // The system is holding this process open for the queue already; taking an
+    // assertion beside it would spend background budget to duplicate it.
+    guard !ContinuedProcessing.shared.isCovering else { return }
     guard !lessonHold.isHolding, !mergeHold.isHolding else { return }
     BackgroundJournal.shared.record("batch idle: lease taken")
     holdAwake()

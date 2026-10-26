@@ -305,6 +305,26 @@ on the phone itself, into the same folders the desktop build writes.
   *refused* grant is retried once every ten seconds, never once per part — parts
   settle about eleven times a second while the app is awake, and one journal line
   per refusal would bury the reason it is there to explain.
+- **On iOS 26 the system runs the queue, and says so on its own card.** Below 26
+  the whole job above is a background assertion this app takes and renews by hand,
+  which is a budget the system meters. iOS 26 offers the thing the queue was
+  imitating: a continued-processing task (`Support/ContinuedProcessing.swift`,
+  identifier `com.kyros.skillcappedlocal.download`, declared in
+  `BGTaskSchedulerPermittedIdentifiers`) keeps the app running for as long as the
+  queue still has work and draws a card with the lesson in front, how many are
+  left and a progress bar. So the assertion is skipped while that task is running
+  — it would spend background budget to duplicate it — and the app's own Live
+  Activity steps aside (`DownloadActivityController.setSuppressed`) because two
+  cards for one download is worse than either. The bar's arithmetic is the
+  careful part and is pure, in `ContinuedRun`: a lesson's part count is only known
+  once its manifest has been read, which happens after it starts, so until then its
+  share is planned from its length at the catalogue's own rate (~9 s of footage a
+  part) and **fixed the first time the lesson is seen** — a denominator that grows
+  when a lesson starts reads as the bar going backwards. A lesson that lands counts
+  its whole plan, so finishing one advances the bar; a lesson cancelled or failed
+  leaves the plan with it rather than leaving the bar short for ever. A task taken
+  away — cancelled on its card, or reclaimed by the system, which cannot be told
+  apart — pauses the queue rather than failing it, so one tap resumes.
 - **A part the system never hands back cannot stop the queue.** Every part a
   lesson awaits lives inside the one task `pump` runs, and `pump` refuses to start
   anything while that task is alive, so a wait that never returns was the whole

@@ -57,6 +57,14 @@
 	<array>
 		<string>audio</string>
 	</array>
+	<!-- The one continued-processing identifier this app asks iOS for: the
+	     download queue. It has to be named here before launch finishes, or the
+	     scheduler refuses to register it and the queue silently falls back to a
+	     background assertion. -->
+	<key>BGTaskSchedulerPermittedIdentifiers</key>
+	<array>
+		<string>com.kyros.skillcappedlocal.download</string>
+	</array>
 	<key>NSSupportsLiveActivities</key>
 	<true/>
 	<key>UILaunchScreen</key>

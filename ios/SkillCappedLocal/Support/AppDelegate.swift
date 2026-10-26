@@ -28,6 +28,9 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
     BackgroundTransfer.shared.onWentIdle = {
       Task { @MainActor in DownloadManager.shared.transferWentIdle() }
     }
+    // Registering is a launch-time job: the system hands a continued-processing
+    // task back only if its identifier was registered before launch finished.
+    ContinuedProcessing.shared.register()
     return true
   }
 
