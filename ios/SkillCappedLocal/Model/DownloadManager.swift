@@ -393,8 +393,7 @@ final class DownloadManager: ObservableObject {
     // Everywhere else, and until that task actually starts, it is the background
     // assertion `holdAwake` takes.
     if TransferHandover.needsApp(running: runner != nil, states: tasks.map(\.state)) {
-      continuedRun.observe(tasks)
-      ContinuedProcessing.shared.keepAlive(continuedRun)
+      refreshContinued()
       holdAwake()
     } else {
       ContinuedProcessing.shared.finish()
@@ -530,6 +529,21 @@ final class DownloadManager: ObservableObject {
       activity.finish()
     }
     activityTrouble = activity.trouble
+    refreshContinued()
+  }
+
+  /// The system's own card (iOS 26), kept in step with what the queue is actually
+  /// doing: the lesson in front, what is left of the queue and how long that should
+  /// take. It is refreshed from the same place the app's card is, so the two never
+  /// disagree, and only while there is work in this process — which is what the
+  /// task exists for.
+  private func refreshContinued() {
+    guard TransferHandover.needsApp(running: running != nil, states: tasks.map(\.state)) else {
+      ContinuedProcessing.shared.finish()
+      return
+    }
+    continuedRun.observe(tasks, bytesPerSecond: bytesPerSecond)
+    ContinuedProcessing.shared.keepAlive(continuedRun)
   }
 
   /// iOS took the queue's continued-processing task away: the person cancelled it

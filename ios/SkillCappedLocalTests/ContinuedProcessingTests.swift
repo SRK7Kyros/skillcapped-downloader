@@ -81,14 +81,14 @@ final class ContinuedProcessingTests: XCTestCase {
     XCTAssertFalse(run.hasWork)
   }
 
-  func testTheCardNamesTheLessonInFrontAndWhatIsLeft() {
+  func testTheCardNamesTheLessonInFrontAndKeepsTheCourseLast() {
     var run = ContinuedRun()
     run.observe([
       task("a", title: "Wave management", course: "Fundamentals", state: .downloading),
       task("b", title: "Crashing", course: "Fundamentals", state: .queued),
     ])
-    XCTAssertEqual(run.title, "Downloading Fundamentals")
-    XCTAssertEqual(run.subtitle, "Wave management · 2 lessons left")
+    XCTAssertEqual(run.title, "Downloading Wave management")
+    XCTAssertEqual(run.subtitle, "2 lessons left · Fundamentals")
   }
 
   func testTheLastLessonSaysSoRatherThanCountingOne() {
@@ -101,13 +101,70 @@ final class ContinuedProcessingTests: XCTestCase {
       task("a", title: "Wave management", state: .ready, done: 13, total: 13),
       task("b", title: "Crashing", state: .downloading, done: 1, total: 13),
     ])
-    XCTAssertEqual(run.subtitle, "Crashing · Last lesson")
+    XCTAssertEqual(run.title, "Downloading Crashing")
+    XCTAssertEqual(run.subtitle, "Last lesson · A course")
   }
 
-  func testAQueueWithNoCourseNamesWhatItIsDoing() {
+  func testAQueueWithNoCourseNamesTheLessonItIsFetching() {
     var run = ContinuedRun()
     run.observe([task("a", title: "Wave management", course: nil, state: .downloading)])
+    XCTAssertEqual(run.title, "Downloading Wave management")
+    XCTAssertEqual(run.subtitle, "Last lesson")
+  }
+
+  func testAQueueWithNothingKnownAboutItStillSaysWhatTheAppIsDoing() {
+    var run = ContinuedRun()
+    run.observe([task("a", title: "", course: nil, state: .queued)])
     XCTAssertEqual(run.title, "Downloading lessons")
+    XCTAssertEqual(run.subtitle, "Last lesson")
+  }
+
+  func testTheEstimateIsSizedByThePartsTheLessonShowsAndTheSpeedItRunsAt() {
+    var run = ContinuedRun()
+    run.observe(
+      [task("a", title: "Wave management", course: "Fundamentals", state: .downloading, done: 4, total: 13, bytes: 8_000_000)],
+      bytesPerSecond: 25_000
+    )
+    XCTAssertEqual(run.bytesPerPart, 2_000_000)
+    XCTAssertEqual(run.secondsLeft, 720)
+    XCTAssertEqual(run.subtitle, "Last lesson · ~12 min left · Fundamentals")
+  }
+
+  func testNoPartLandedMeansNoEstimateRatherThanAGuess() {
+    var run = ContinuedRun()
+    run.observe(
+      [task("a", title: "Wave management", course: "Fundamentals", state: .downloading, total: 13)],
+      bytesPerSecond: 1_000_000
+    )
+    XCTAssertNil(run.secondsLeft)
+    XCTAssertEqual(run.subtitle, "Last lesson · Fundamentals")
+  }
+
+  func testThePartSizeSurvivesIntoTheNextLesson() {
+    var run = ContinuedRun()
+    run.observe([
+      task("a", title: "Wave management", state: .downloading, done: 4, total: 13, bytes: 8_000_000),
+      task("b", title: "Crashing", state: .queued, total: 13),
+    ], bytesPerSecond: 1_000_000)
+    run.observe([
+      task("a", title: "Wave management", state: .ready, done: 13, total: 13),
+      task("b", title: "Crashing", state: .downloading, total: 13),
+    ], bytesPerSecond: 1_000_000)
+    XCTAssertEqual(run.bytesPerPart, 2_000_000)
+    XCTAssertNotNil(run.secondsLeft)
+  }
+
+  func testTheDurationItPrintsIsRoundedAndMarkedAsAnEstimate() {
+    XCTAssertEqual(ContinuedRun.duration(20), "under a minute")
+    XCTAssertEqual(ContinuedRun.duration(720), "~12 min")
+    XCTAssertEqual(ContinuedRun.duration(3_900), "~1 hr 5 min")
+    XCTAssertEqual(ContinuedRun.duration(7_200), "~2 hr")
+  }
+
+  func testAQueueThatHasFinishedSaysSoRatherThanCountingDown() {
+    var run = ContinuedRun()
+    run.observe([task("a", title: "Wave management", course: "Fundamentals", state: .ready, done: 13, total: 13)])
+    XCTAssertEqual(run.subtitle, "Nothing left")
   }
 
   func testTheIdentifierStaysInsideTheAppsOwnNamespace() {
@@ -135,7 +192,8 @@ final class ContinuedProcessingTests: XCTestCase {
     duration: Int = 122,
     state: DownloadState = .queued,
     done: Int = 0,
-    total: Int = 0
+    total: Int = 0,
+    bytes: Int64 = 0
   ) -> DownloadTask {
     DownloadTask(
       uuid: uuid,
@@ -150,7 +208,7 @@ final class ContinuedProcessingTests: XCTestCase {
       state: state,
       segmentsDone: done,
       segmentsTotal: total,
-      bytes: 0,
+      bytes: bytes,
       error: nil,
       createdAt: Date(timeIntervalSince1970: 0),
       finishedAt: nil,

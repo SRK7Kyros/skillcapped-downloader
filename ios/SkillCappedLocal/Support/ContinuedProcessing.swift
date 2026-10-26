@@ -23,6 +23,13 @@ struct ContinuedRun {
   private(set) var landed: Set<String> = []
   private(set) var currentTitle = ""
   private(set) var currentCourse: String?
+  /// The average size of a part, read off the lesson in front. Kept when that
+  /// lesson lands: the parts of one course are much the same size, and an estimate
+  /// that disappeared for the first seconds of every lesson would flicker.
+  private(set) var bytesPerPart: Int64 = 0
+  /// The speed the queue is running at, handed in by the queue itself — it already
+  /// smooths this for its own readout.
+  private(set) var bytesPerSecond: Double = 0
 
   var total: Int64 { planned.values.reduce(0, +) }
 
@@ -32,23 +39,61 @@ struct ContinuedRun {
     }
   }
 
-  /// The headline the system's card carries.
+  /// The headline the system's card carries: the lesson coming down now, because
+  /// that is the thing that changes as the queue moves. Between lessons it names
+  /// the course, and with neither known it still says what the app is doing.
   var title: String {
+    if !currentTitle.isEmpty { return "Downloading \(currentTitle)" }
     guard let course = currentCourse, !course.isEmpty else { return "Downloading lessons" }
     return "Downloading \(course)"
   }
 
-  /// …and the line under it: which lesson is coming down, and how much of the
-  /// queue is left behind it.
+  /// …and the line under it: what is left, how long that should take, and the course
+  /// those lessons belong to.
+  ///
+  /// The order is the order a narrow card keeps — a long course name is the one
+  /// thing here that can be cut off without losing the answer, so it goes last.
   var subtitle: String {
-    let left = lessonsLeft
-    let remaining: String
-    switch left {
-    case ..<1: remaining = "Nothing left"
-    case 1: remaining = "Last lesson"
-    default: remaining = "\(left) lessons left"
+    var segments = [whatIsLeft]
+    if let estimate = timeLeftPhrase { segments.append(estimate) }
+    if !currentTitle.isEmpty, let course = currentCourse, !course.isEmpty {
+      segments.append(course)
     }
-    return currentTitle.isEmpty ? remaining : "\(currentTitle) · \(remaining)"
+    return segments.joined(separator: " · ")
+  }
+
+  private var whatIsLeft: String {
+    switch lessonsLeft {
+    case ..<1: return "Nothing left"
+    case 1: return "Last lesson"
+    default: return "\(lessonsLeft) lessons left"
+    }
+  }
+
+  /// How long the rest should take: the parts still to fetch, at the size the lesson
+  /// in front is showing and the speed the queue is running at. `nil` until a part
+  /// has landed and a speed is known, because a card that guesses is worse than one
+  /// that waits a few seconds for an answer.
+  var secondsLeft: TimeInterval? {
+    let parts = max(0, total - completed)
+    guard parts > 0, bytesPerPart > 0, bytesPerSecond > 1 else { return nil }
+    return Double(parts) * Double(bytesPerPart) / bytesPerSecond
+  }
+
+  var timeLeftPhrase: String? {
+    guard let seconds = secondsLeft else { return nil }
+    return "\(Self.duration(seconds)) left"
+  }
+
+  /// `under a minute`, `~12 min`, `~1 hr 5 min` — rounded, and marked as an
+  /// estimate, because a part's size and the phone's speed both move.
+  static func duration(_ seconds: TimeInterval) -> String {
+    guard seconds >= 45 else { return "under a minute" }
+    let minutes = Int((seconds / 60).rounded())
+    guard minutes >= 60 else { return "~\(minutes) min" }
+    let hours = minutes / 60
+    let rest = minutes % 60
+    return rest == 0 ? "~\(hours) hr" : "~\(hours) hr \(rest) min"
   }
 
   var lessonsLeft: Int { max(0, planned.count - landed.count) }
@@ -64,7 +109,7 @@ struct ContinuedRun {
     return max(1, Int64((seconds / secondsPerPart).rounded(.up)))
   }
 
-  mutating func observe(_ tasks: [DownloadTask]) {
+  mutating func observe(_ tasks: [DownloadTask], bytesPerSecond: Double = 0) {
     var seen = Set<String>()
     for task in tasks {
       let known = planned[task.uuid] != nil
@@ -95,6 +140,10 @@ struct ContinuedRun {
       ?? queue.first
     currentTitle = current?.title ?? ""
     currentCourse = current?.courseTitle
+    self.bytesPerSecond = max(0, bytesPerSecond)
+    if let current, current.segmentsDone > 0, current.bytes > 0 {
+      bytesPerPart = max(1, current.bytes / Int64(current.segmentsDone))
+    }
   }
 }
 
@@ -125,6 +174,15 @@ final class ContinuedProcessing {
   /// moved on is given the current ones rather than the ones it was asked for.
   private var latest: ContinuedRun?
   private var registered = false
+  /// One report a second is plenty for a progress readout, and a lesson that
+  /// changes in front is reported at once, because its name did.
+  private static let reportInterval: TimeInterval = 1
+  private var reportedAt: Date?
+  private var reportedTitle = ""
+  /// A refused request is retried rarely: parts settle many times a second and
+  /// every attempt writes a journal line, so a burst would bury the reason.
+  private static let submitInterval: TimeInterval = 10
+  private var submittedAt: Date?
 
   /// iOS took the task away: the person cancelled it on its card, or the system
   /// needed the time for something else. Both mean stop — carrying on would
@@ -174,6 +232,11 @@ final class ContinuedProcessing {
       submit(run)
       return
     }
+    let now = Date()
+    if run.title == reportedTitle, let reportedAt,
+       now.timeIntervalSince(reportedAt) < Self.reportInterval { return }
+    reportedAt = now
+    reportedTitle = run.title
     Continuous.report(task, run)
   }
 
@@ -186,6 +249,9 @@ final class ContinuedProcessing {
     let was = phase
     guard was != .idle else { return }
     phase = .idle
+    reportedAt = nil
+    reportedTitle = ""
+    submittedAt = nil
     if was == .running, let task = task as? BGContinuedProcessingTask {
       BackgroundJournal.shared.record("continued: finished")
       Continuous.complete(task, success: true)
@@ -203,6 +269,9 @@ final class ContinuedProcessing {
     // Apple accepts a continued-processing request from a foreground app only. A
     // queue woken in the background keeps the assertion it already has instead.
     guard UIApplication.shared.applicationState == .active else { return }
+    let now = Date()
+    if let submittedAt, now.timeIntervalSince(submittedAt) < Self.submitInterval { return }
+    submittedAt = now
     do {
       try Continuous.submit(
         identifier: Self.identifier,
@@ -228,6 +297,8 @@ final class ContinuedProcessing {
       Task { @MainActor in self?.expired() }
     }
     if let latest { Continuous.report(task, latest) }
+    reportedAt = Date()
+    reportedTitle = latest?.title ?? ""
     onStateChange?()
   }
 
@@ -239,6 +310,8 @@ final class ContinuedProcessing {
     }
     task = nil
     latest = nil
+    reportedAt = nil
+    reportedTitle = ""
     BackgroundJournal.shared.record("continued: taken away — the queue is paused")
     onExpire?()
     onStateChange?()

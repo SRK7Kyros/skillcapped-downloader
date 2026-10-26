@@ -324,7 +324,20 @@ on the phone itself, into the same folders the desktop build writes.
   its whole plan, so finishing one advances the bar; a lesson cancelled or failed
   leaves the plan with it rather than leaving the bar short for ever. A task taken
   away — cancelled on its card, or reclaimed by the system, which cannot be told
-  apart — pauses the queue rather than failing it, so one tap resumes.
+  apart — pauses the queue rather than failing it, so one tap resumes. **The
+  card's two lines are the queue's own answer, not a constant**, because the card
+  is drawn by the system and this is the only way to say anything on it: the
+  headline names the lesson coming down now, and the line under it carries what is
+  left of the queue, how long that should take and the course those lessons belong
+  to — in that order, since a long course name is the one thing that can be cut
+  off without losing the answer. The estimate is the parts still to fetch at the
+  size the lesson in front is showing and the speed the queue is already smoothing
+  for its own readout, so it moves with the network instead of guessing; it is
+  withheld until a part has landed, because a card that invents a number is worse
+  than one that waits a few seconds. It is handed over at most once a second and
+  at once when the lesson in front changes, and a *refused* request is retried
+  once every ten seconds — parts settle about eleven times a second, so retrying
+  per part would write a journal line per part and bury the reason.
 - **A part the system never hands back cannot stop the queue.** Every part a
   lesson awaits lives inside the one task `pump` runs, and `pump` refuses to start
   anything while that task is alive, so a wait that never returns was the whole
