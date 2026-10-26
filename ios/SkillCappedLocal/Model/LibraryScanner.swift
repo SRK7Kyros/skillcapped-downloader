@@ -71,7 +71,9 @@ enum LibraryScanner {
         seconds: item?.durationSec ?? 0,
         bytes: placeholder == nil ? Int64(values?.fileSize ?? 0) : 0,
         modified: values?.contentModificationDate,
-        itemId: item?.id,
+        // A name written before numbering names its own id, so that wins; a
+        // numbered name carries none, and the catalogue has to answer.
+        itemId: name.id ?? item?.id,
         number: name.number,
         needsDownload: placeholder != nil || needsDownload(values),
         thumb: item?.thumb ?? ""
