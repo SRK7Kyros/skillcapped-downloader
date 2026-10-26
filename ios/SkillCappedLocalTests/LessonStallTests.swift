@@ -24,9 +24,13 @@ final class LessonStallTests: XCTestCase {
   }
 
   func testTheLessonLimitOutlastsThePartWatchdogSoTheTwoDoNotRace() {
-    // A part the system never hands back is caught by its own deadline first; the
-    // lesson-level check is the backstop for everything that is not a part.
-    XCTAssertGreaterThan(LessonStall.limit, Double(TransferWatchdog.deadline.components.seconds))
+    // A part the system never hands back is caught by its own silence first; the
+    // lesson-level check is the backstop for everything that is not a part. One
+    // part's whole budget is three hand-overs, each given its own window.
+    let part = (1...TransferWatchdog.attempts)
+      .map { TransferWatchdog.silence(for: $0) }
+      .reduce(0, +)
+    XCTAssertGreaterThan(LessonStall.limit, part)
   }
 
   func testAMergeIsGivenLongerThanATransferBecauseItReportsOnlyAtItsEnds() {

@@ -125,19 +125,32 @@ final class BackgroundTransfer: NSObject, URLSessionDownloadDelegate, @unchecked
   /// Await a part that was already handed over.
   ///
   /// Bounded on purpose. The system owns the transfer, so the app is never told
-  /// when one is dropped — and a wait with no deadline is a queue that never moves
-  /// again (see `TransferWatchdog`). When the deadline passes the task is cancelled
-  /// and the waiter answered with a timeout, which the caller retries as a fresh
-  /// hand-over.
+  /// when one is dropped — and a wait with no bound is a queue that never moves
+  /// again (see `TransferWatchdog`). The bound is **silence**, not elapsed time: the
+  /// byte count is sampled while the app is awake, so a part that stopped receiving
+  /// is handed over again in 30 s, while one that was merely suspended between wakes
+  /// is left alone. When the window passes the task is cancelled and the waiter
+  /// answered with a timeout, which the caller retries as a fresh hand-over.
   func wait(
     for identifier: Int,
-    within deadline: Duration = TransferWatchdog.deadline
+    silent: TimeInterval = TransferWatchdog.silence(for: 1)
   ) async throws -> Int64 {
     let watchdog = Task { [weak self] in
-      // A cancelled sleep means the part came back in time, so there is nothing to
-      // expire — falling through here would kill a transfer that just succeeded.
-      do { try await Task.sleep(for: deadline) } catch { return }
-      self?.expire(identifier)
+      var silence = TransferSilence()
+      while !Task.isCancelled {
+        // A cancelled sleep means the part came back in time, so there is nothing to
+        // expire — falling through here would kill a transfer that just succeeded.
+        // Sleeping in short samples is what lets the question be asked again rather
+        // than asked once.
+        do { try await Task.sleep(for: .seconds(TransferWatchdog.sample)) } catch { return }
+        guard let self else { return }
+        // Nothing to watch: the task settled, and its waiter has been resumed.
+        guard let received = self.received(identifier) else { return }
+        if silence.observe(received, at: Date(), lostAfter: silent) {
+          self.expire(identifier, silent: silent, received: received)
+          return
+        }
+      }
     }
     defer { watchdog.cancel() }
     return try await withTaskCancellationHandler {
@@ -163,26 +176,38 @@ final class BackgroundTransfer: NSObject, URLSessionDownloadDelegate, @unchecked
     }
   }
 
-  /// The deadline passed with the part still in the system's hands: stop the
+  /// Bytes this transfer has received, or `nil` when it is no longer in flight — a
+  /// task that has settled is not a task to watch.
+  private func received(_ identifier: Int) -> Int64? {
+    lock.lock()
+    defer { lock.unlock() }
+    return transfers[identifier]?.countOfBytesReceived
+  }
+
+  /// The window passed with the part still in the system's hands: stop the
   /// transfer and answer its waiter with a timeout, so the lesson hands the part
   /// over again instead of waiting for a task that is not coming back.
   ///
   /// Answering exactly once is the whole job — a continuation resumed here must not
   /// also be resumed by a `settle` that arrives a moment later, which is why the
   /// waiter is taken out of the table while the lock is held.
-  private func expire(_ identifier: Int) {
+  private func expire(_ identifier: Int, silent: TimeInterval, received: Int64) {
     lock.lock()
     let waiter = waiters.removeValue(forKey: identifier)
     let task = transfers.removeValue(forKey: identifier)
     inFlight.remove(identifier)
+    let idle = inFlight.isEmpty
     lock.unlock()
     guard let waiter else { return }
     let part = task.flatMap { BackgroundSegment.decode($0.taskDescription)?.index }
     BackgroundJournal.shared.record(
-      "part \(part.map { String($0) } ?? "-") gave no answer in "
-        + "\(TransferWatchdog.deadline.components.seconds) s — handing it over again"
+      "part \(part.map { String($0) } ?? "-") received no bytes for "
+        + "\(Int(silent)) s (\(received) bytes) — handing it over again"
     )
     task?.cancel()
+    // Same rule as a settle that brought the last part in: the next window is
+    // handed over from this process, so it needs the app awake to hand it over.
+    if idle { onWentIdle?() }
     waiter.resume(throwing: URLError(.timedOut))
   }
 

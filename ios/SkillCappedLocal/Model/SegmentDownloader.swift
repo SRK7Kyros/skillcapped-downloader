@@ -61,10 +61,11 @@ actor SegmentDownloader {
   static let shared = SegmentDownloader()
 
   static let cdnOrigin = "https://d13z5uuzt1wkbz.cloudfront.net"
-  /// Connections the whole session may hold open. The CDN answers one part
-  /// (2.7 MB) in ~1 s and 16 at once at 38 MB/s, so more is not the problem — the
-  /// scheduler is.
-  static let segmentConcurrency = 6
+  /// Connections the whole session may hold open — and therefore the widest window
+  /// it can actually run. It was 6 beside a window of 8, so two of every eight parts
+  /// sat waiting for a slot while the CDN answers 16 at once from a single host
+  /// (measured: 13 parts, 38.9 MB, 0.34 s cold).
+  static let segmentConcurrency = 8
   /// Parts handed to the session at once. **Deliberately narrow**, and it was 64
   /// for one build: with the whole lesson queued, the app goes idle a second after
   /// the hand-over, and iOS then runs the list as system-scheduled background work
@@ -358,7 +359,10 @@ actor SegmentDownloader {
     var lastStatus = 0
     for attempt in 1...TransferWatchdog.attempts {
       do {
-        return try await BackgroundTransfer.shared.wait(for: identifier)
+        return try await BackgroundTransfer.shared.wait(
+          for: identifier,
+          silent: TransferWatchdog.silence(for: attempt)
+        )
       } catch let error as DownloadError {
         switch error {
         case .emptySegment, .cancelled, .qualityUnavailable, .noSegments, .storage:

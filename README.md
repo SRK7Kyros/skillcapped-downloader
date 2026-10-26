@@ -273,8 +273,10 @@ on the phone itself, into the same folders the desktop build writes.
   after a relaunch land in the right job folder with no queue in memory. The
   session hands over a window of `partWindow` parts and refills it as each one
   settles — as many as keeps the session non-empty without leaving a lesson with
-  nothing to be woken for. `wake()` reopens the library from the saved folder
-  without a scene, so the next batch is handed over by whatever relaunch happens.
+  nothing to be woken for, and the same number as the session's connection cap, so
+  every handed-over part is really in flight. `wake()` reopens the library from the
+  saved folder without a scene, so the next batch is handed over by whatever
+  relaunch happens.
   `Settings → Background queue` carries the run's **journal** (`BackgroundJournal`,
   240 lines: launches, leases, part hand-overs and settles, ended lessons) and
   **Copy logs** puts it on the clipboard, because a stall happens on a phone and
@@ -348,18 +350,29 @@ on the phone itself, into the same folders the desktop build writes.
   second and at once when the lesson in front changes, and a *refused* request is
   retried once every ten seconds — parts settle about eleven times a second, so
   retrying per part would write a journal line per part and bury the reason.
-- **A part the system never hands back cannot stop the queue.** Every part a
-  lesson awaits lives inside the one task `pump` runs, and `pump` refuses to start
-  anything while that task is alive, so a wait that never returns was the whole
-  queue stopped until the app was killed and reopened. `BackgroundTransfer.wait`
-  is bounded now (`Support/TransferWatchdog.swift`): at 120 s — longer than the
-  session's own 60 s request timeout, so a stalled request gets its retry first —
-  the task is cancelled and its waiter answered with a timeout, which the lesson
-  retries as a fresh hand-over, and after three the lesson fails so the queue
-  moves on. A session iOS invalidates answers every waiter and rebuilds itself
-  for the same reason. Returning to the app wakes the queue, and a launch with
-  Background App Refresh off says so in the journal, because that is the one
-  setting under which iOS never wakes the app for a transfer at all.
+- **A part the system never hands back cannot stop the queue — and a part that has
+  merely gone quiet is not the same thing.** Every part a lesson awaits lives
+  inside the one task `pump` runs, and `pump` refuses to start anything while that
+  task is alive, so a wait that never returns was the whole queue stopped until the
+  app was killed and reopened. `BackgroundTransfer.wait` is bounded
+  (`Support/TransferWatchdog.swift`), but **by silence measured on the transfer's
+  own byte count, never by the clock**: the app is suspended between wakes, so a
+  wall-clock deadline expires every pending part the instant iOS resumes it — on
+  26 Oct 2026 a window of eight was cancelled 120 s after its hand-over and one of
+  those parts landed two seconds later — while a transfer that really has hung was
+  waited on for the full window even though it stopped receiving at the start of
+  it. `TransferSilence` samples `countOfBytesReceived` every 5 s, and a hand-over
+  is lost after 30 s / 60 s / 120 s with no bytes, escalating because the first
+  silence is a hung connection and the third is the network being gone. The task is
+  then cancelled and its waiter answered with a timeout, which the lesson retries
+  as a fresh hand-over, and after three the lesson fails so the queue moves on.
+  **Catching that first silence in 30 s rather than 120 is what keeps the run
+  fast**, not merely tidier: a window that goes quiet stops reporting progress, a
+  continued-processing task is reclaimed once it stops, and the queue then falls
+  back to a window per wake. A session iOS invalidates answers every waiter and
+  rebuilds itself for the same reason. Returning to the app wakes the queue, and a
+  launch with Background App Refresh off says so in the journal, because that is
+  the one setting under which iOS never wakes the app for a transfer at all.
 - **A lesson that stops answering cannot stop the queue either.** The part
   watchdog bounds one transfer; `Support/LessonStall.swift` bounds the lesson,
   because a lesson also waits on things that are not parts — the rendition
